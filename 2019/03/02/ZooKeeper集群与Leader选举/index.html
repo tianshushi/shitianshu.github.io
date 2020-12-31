@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+<html class="theme-next gemini use-motion" lang="zh-CN">
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2">
+
+<link rel="stylesheet" href="/css/main.css?v=7.0.1">
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=7.0.1">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=7.0.1">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=7.0.1">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=7.0.1" color="#222">
+
+
+
+
+
+
+
+<script id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Gemini',
+    version: '7.0.1',
+    sidebar: {"position":"left","display":"post","offset":12,"onmobile":false,"dimmer":false},
+    back2top: true,
+    back2top_sidebar: false,
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="ZooKeeper是一个开源分布式协调服务、分布式数据一致性解决方案。可基于ZooKeeper实现命名服务、集群管理、Master选举、分布式锁等功能。 高可用为了保证ZooKeeper的可用性，在生产环境中我们使用ZooKeeper集群模式对外提供服务，并且集群规模至少由3个ZooKeeper节点组成。 集群至少由3个节点组成ZooKeeper其实2个节点也可以组成集群并对外提供服务，但我们使用">
+<meta name="keywords" content="ZooKeeper">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ZooKeeper集群与Leader选举">
+<meta property="og:url" content="http://yoursite.com/2019/03/02/ZooKeeper集群与Leader选举/index.html">
+<meta property="og:site_name" content="天书说">
+<meta property="og:description" content="ZooKeeper是一个开源分布式协调服务、分布式数据一致性解决方案。可基于ZooKeeper实现命名服务、集群管理、Master选举、分布式锁等功能。 高可用为了保证ZooKeeper的可用性，在生产环境中我们使用ZooKeeper集群模式对外提供服务，并且集群规模至少由3个ZooKeeper节点组成。 集群至少由3个节点组成ZooKeeper其实2个节点也可以组成集群并对外提供服务，但我们使用">
+<meta property="og:locale" content="zh-CN">
+<meta property="og:image" content="https://tianshushi.github.io/2019/03/02/ZooKeeper集群与Leader选举/投票桶内数据变化-第一轮投票.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/03/02/ZooKeeper集群与Leader选举/投票桶内数据变化-第二轮.jpg">
+<meta property="og:updated_time" content="2019-08-30T03:19:59.000Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="ZooKeeper集群与Leader选举">
+<meta name="twitter:description" content="ZooKeeper是一个开源分布式协调服务、分布式数据一致性解决方案。可基于ZooKeeper实现命名服务、集群管理、Master选举、分布式锁等功能。 高可用为了保证ZooKeeper的可用性，在生产环境中我们使用ZooKeeper集群模式对外提供服务，并且集群规模至少由3个ZooKeeper节点组成。 集群至少由3个节点组成ZooKeeper其实2个节点也可以组成集群并对外提供服务，但我们使用">
+<meta name="twitter:image" content="https://tianshushi.github.io/2019/03/02/ZooKeeper集群与Leader选举/投票桶内数据变化-第一轮投票.jpg">
+
+
+
+
+
+  
+  
+  <link rel="canonical" href="http://yoursite.com/2019/03/02/ZooKeeper集群与Leader选举/">
+
+
+
+<script id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>ZooKeeper集群与Leader选举 | 天书说</title>
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .motion-element,
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-title { opacity: initial; }
+
+  .use-motion .logo,
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-CN">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">天书说</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+    
+    
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="切换导航栏">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+        
+          
+          <li class="menu-item menu-item-home">
+
+    
+    
+    
+      
+    
+
+    
+
+    <a href="/" rel="section"><i class="menu-item-icon fa fa-fw fa-home"></i> <br>首页</a>
+
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-archives">
+
+    
+    
+    
+      
+    
+
+    
+
+    <a href="/archives/" rel="section"><i class="menu-item-icon fa fa-fw fa-archive"></i> <br>归档</a>
+
+  </li>
+
+      
+      
+    </ul>
+  
+
+  
+
+  
+</nav>
+
+
+
+  
+
+
+
+</div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+            
+
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2019/03/02/ZooKeeper集群与Leader选举/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="说天书">
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="天书说">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">ZooKeeper集群与Leader选举
+
+              
+            
+          </h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+
+            
+            
+            
+
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+
+              
+                
+              
+
+              <time title="创建时间：2019-03-02 02:22:14" itemprop="dateCreated datePublished" datetime="2019-03-02T02:22:14+08:00">2019-03-02</time>
+            
+
+            
+              
+
+              
+                
+                <span class="post-meta-divider">|</span>
+                
+
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                
+                  <span class="post-meta-item-text">更新于</span>
+                
+                <time title="修改时间：2019-08-30 11:19:59" itemprop="dateModified" datetime="2019-08-30T11:19:59+08:00">2019-08-30</time>
+              
+            
+          </span>
+
+          
+
+          
+            
+            
+          
+
+          
+          
+
+          
+            <span class="post-meta-divider">|</span>
+            <span class="post-meta-item-icon">
+            <i class="fa fa-eye"></i>
+             阅读次数： 
+            <span class="busuanzi-value" id="busuanzi_value_page_pv"></span>
+            </span>
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>ZooKeeper是一个开源分布式协调服务、分布式数据一致性解决方案。可基于ZooKeeper实现命名服务、集群管理、Master选举、分布式锁等功能。</p>
+<h2 id="高可用"><a href="#高可用" class="headerlink" title="高可用"></a>高可用</h2><p>为了保证ZooKeeper的可用性，在生产环境中我们使用ZooKeeper集群模式对外提供服务，并且集群规模至少由3个ZooKeeper节点组成。</p>
+<h3 id="集群至少由3个节点组成"><a href="#集群至少由3个节点组成" class="headerlink" title="集群至少由3个节点组成"></a>集群至少由3个节点组成</h3><p>ZooKeeper其实2个节点也可以组成集群并对外提供服务，但我们使用集群主要目的是为了高可用。如果2个节点组成集群，其中1个节点挂了，另外ZooKeeper节点不能正常对外提供服务。因此也失去了集群的意义。<br>如果3个节点组成集群，其中1个节点挂掉后，根据ZooKeeper的Leader选举机制是可以从另外2个节点选出一个作为Leader的，集群可以继续对外提供服务。</p>
+<a id="more"></a>
+<h3 id="并非节点越多越好"><a href="#并非节点越多越好" class="headerlink" title="并非节点越多越好"></a>并非节点越多越好</h3><ul>
+<li>节点越多，使用的资源越多</li>
+<li>节点越多，ZooKeeper节点间花费的通讯成本越高，节点间互连的Socket也越多。影响ZooKeeper集群事务处理。</li>
+<li>节点越多，造成脑裂的可能性越大</li>
+</ul>
+<h3 id="集群规模为奇数"><a href="#集群规模为奇数" class="headerlink" title="集群规模为奇数"></a>集群规模为奇数</h3><p>集群规模除了考虑自身成本和资源外还要结合ZooKeeper特性考虑。</p>
+<ul>
+<li>节省资源<br>3节点集群和4节点集群，我们选择使用3节点集群；5节点集群和6节点集群，我们选择使用5节点集群。以此类推。因为生产环境为了保证高可用，3节点集群最多只允许挂1台，4节点集群最多也只允许挂1台(过半原则中解释了原因)。同理5节点集群最多允许挂2台，6节点集群最多也只允许挂2台。<br>出于对资源节省的考虑，我们应该使用奇数节点来满足相同的高可用性。</li>
+<li>集群可用性<br>当集群中节点间网络通讯出现问题时奇数和偶数对集群的影响</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">集群规模</th>
+<th style="text-align:left">失联数量</th>
+<th style="text-align:left">影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">5节点</td>
+<td style="text-align:left">1个Follower失联</td>
+<td style="text-align:left">集群中还有4节点互联互通，集群可用，且裂出的1节点无法选举出Leader</td>
+</tr>
+<tr>
+<td style="text-align:left">6节点</td>
+<td style="text-align:left">1个Follower失联</td>
+<td style="text-align:left">集群中还有5节点互联互通，集群可用，且裂出的1节点无法选举出Leader</td>
+</tr>
+<tr>
+<td style="text-align:left">5节点</td>
+<td style="text-align:left">2个Follower失联</td>
+<td style="text-align:left">集群中还有3节点互联互通，集群可用，且裂出的2节点无法选举出Leader</td>
+</tr>
+<tr>
+<td style="text-align:left">6节点</td>
+<td style="text-align:left">2个Follower失联</td>
+<td style="text-align:left">集群中还有4节点互联互通，集群可用，且裂出的2节点无法选举出Leader</td>
+</tr>
+<tr>
+<td style="text-align:left">5节点</td>
+<td style="text-align:left">3个Follower失联</td>
+<td style="text-align:left">裂出的3节点选举出Leader，集群可用，剩下2节点无法选举Leader</td>
+</tr>
+<tr>
+<td style="text-align:left">6节点</td>
+<td style="text-align:left">3个Follower失联</td>
+<td style="text-align:left">集群不可用，不管是剩下的3节点还是裂出的3节点都无法选举出Leader</td>
+</tr>
+</tbody>
+</table>
+<h3 id="集群配置"><a href="#集群配置" class="headerlink" title="集群配置"></a>集群配置</h3><p>ZooKeeper集群配置至少需要2处变更</p>
+<ol>
+<li>增加集群配置<br>在{ZK_HOME}/conf/zoo.cfg中增加集群的配置，结构以<code>server.id=ip:port1:port2</code>为标准。<br>比如下面配置文件中表示由3个ZooKeeper组成的集群</li>
+</ol>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">server.1=localhost:2881:3881</span><br><span class="line">server.2=localhost:2882:3882</span><br><span class="line">server.3=localhost:2883:3883</span><br></pre></td></tr></table></figure>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">属性</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">server.id</td>
+<td style="text-align:left">其中的id是指ZooKeeper节点id</td>
+</tr>
+<tr>
+<td style="text-align:left">ip</td>
+<td style="text-align:left">指ZooKeeper节点所在机器ip地址</td>
+</tr>
+<tr>
+<td style="text-align:left">port1</td>
+<td style="text-align:left">配置ZooKeeper节点间非选举通讯端口</td>
+</tr>
+<tr>
+<td style="text-align:left">port2</td>
+<td style="text-align:left">配置ZooKeeper节点间选举通讯端口</td>
+</tr>
+</tbody>
+</table>
+<ol start="2">
+<li>配置节点id<br><code>zoo.cfg</code>中配置集群时需要指定server.id，这个id需要在<code>dataDir</code>（zoo.cfg中配置）指定的目录中创建<code>myid</code>文件，文件内容就是当前ZooKeeper节点的id。</li>
+</ol>
+<h2 id="集群角色"><a href="#集群角色" class="headerlink" title="集群角色"></a>集群角色</h2><p>ZooKeeper没有使用Master/Slave的概念，而是将集群中的节点分为了3类角色</p>
+<ul>
+<li><p>Leader<br>在一个ZooKeeper集群中，只能存在一个Leader，这个Leader是集群中事务请求唯一的调度者和处理者，所谓事务请求是指会改变集群状态的请求；Leader根据事务ID可以保证事务处理的顺序性。<br>如果一个集群中存在多个Leader，这种现象称为「脑裂」。试想一下，一个集群中存在多个Leader会产生什么影响？<br>相当于原本一个大集群，裂出多个小集群，他们之间的数据是不会相互同步的。「脑裂」后集群中的数据会变得非常混乱。</p>
+</li>
+<li><p>Follower<br>Follower角色的ZooKeeper服务只能处理非事务请求；如果接收到客户端事务请求会将请求转发给Leader服务器；参与Leader选举；参与Leader事务处理投票处理。<br>Follower发现集群中Leader不可用时会变更自身状态，并发起Leader选举投票，最终集群中的某个Follower会被选为Leader。</p>
+</li>
+<li><p>Observer<br>Observer与Follower很像，可以处理非事务请求；将事务请求转发给Leader服务器。<br>与Follower不同的是，Observer不会参与Leader选举；不会参与Leader事务处理投票。<br>Observer用于不影响集群事务处理能力的前提下提升集群的非事务处理能力。</p>
+</li>
+</ul>
+<h2 id="Leader选举"><a href="#Leader选举" class="headerlink" title="Leader选举"></a>Leader选举</h2><p>Leader在集群中是非常重要的一个角色，负责了整个事务的处理和调度，保证分布式数据一致性的关键所在。既然Leader在ZooKeeper集群中这么重要所以一定要保证集群在任何时候都有且仅有一个Leader存在。<br>当集群中Leader不可用时，需要有一个机制来保证能从集群中找出一个最优的服务晋升为Leader继续处理事务和调度等一系列职责。这个过程称为Leader选举。</p>
+<h3 id="选举机制"><a href="#选举机制" class="headerlink" title="选举机制"></a>选举机制</h3><p>ZooKeeper选举Leader依赖下列原则并遵循优先顺序</p>
+<ol>
+<li>选举投票必须在同一轮次中进行<br>如果Follower服务选举轮次不同，不会采纳投票。</li>
+<li>数据最新的节点优先成为Leader<br>数据的新旧使用事务ID判定，事务ID越大认为节点数据约接近Leader的数据，自然应该成为Leader。</li>
+<li>比较server.id，id值大的优先成为Leader<br>如果每个参与竞选节点事务ID一样，再使用server.id做比较。server.id是节点在集群中唯一的id，<code>myid</code>文件中配置。</li>
+</ol>
+<p>不管是在集群启动时选举Leader还是集群运行中重新选举Leader。集群中每个Follower角色服务都是以上面的条件作为基础推选出合适的Leader，一旦出现某个节点被过半推选，那么该节点晋升为Leader。</p>
+<h3 id="过半原则"><a href="#过半原则" class="headerlink" title="过半原则"></a>过半原则</h3><p>ZooKeeper集群会有很多类型投票。Leader选举投票；事务提议投票；这些投票依赖过半原则。就是说ZooKeeper认为投票结果超过了集群总数的一半，便可以安全的处理后续事务。</p>
+<ul>
+<li><p>事务提议投票<br>假设有3个节点组成ZooKeeper集群，客户端请求添加一个节点。Leader接到该事务请求后给所有Follower发起「创建节点」的提议投票。如果Leader收到了超过集群一半数量的反馈，继续给所有Follower发起commit。此时Leader认为集群过半了，就算自己挂了集群也是安全可靠的。</p>
+</li>
+<li><p>Leader选举投票<br>假设有3个节点组成ZooKeeper集群，这时Leader挂了，需要投票选举Leader。当相同投票结果过半后Leader选出。</p>
+</li>
+<li><p>集群可用节点<br>ZooKeeper集群中每个节点有自己的角色，对于集群可用性来说必须满足过半原则。这个过半是指Leader角色 + Follower角色可用数大于集群中Leader角色 + Follower角色总数。<br>假设有5个节点组成ZooKeeper集群，一个Leader、两个Follower、两个Observer。当挂掉两个Follower或挂掉一个Leader和一个Follower时集群将不可用。因为Observer角色不参与任何形式的投票。</p>
+</li>
+</ul>
+<p>所谓过半原则算法是说<code>票数 &gt; 集群总节点数/2</code>。其中<code>集群总节点数/2</code>的计算结果会向下取整。<br>在ZooKeeper源代码<code>QuorumMaj.java</code>中实现了这个算法。下面代码片段有所缩减。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">boolean</span> <span class="title">containsQuorum</span><span class="params">(HashSet&lt;Long&gt; set)</span> </span>&#123;</span><br><span class="line">  <span class="comment">/** n表示集群总数 */</span></span><br><span class="line">  <span class="keyword">int</span> half = n / <span class="number">2</span>;</span><br><span class="line">  <span class="keyword">return</span> (set.size() &gt; half);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>回过头我们看一下奇数和偶数集群在Leader选举的结果</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">集群规模</th>
+<th style="text-align:left">现象</th>
+<th style="text-align:left">过半原则</th>
+<th style="text-align:left">结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">3节点</td>
+<td style="text-align:left">挂1节点</td>
+<td style="text-align:left">2可用节点 &gt; (3 / 2) 即 2 &gt; 1</td>
+<td style="text-align:left">过半，集群继续可用</td>
+</tr>
+<tr>
+<td style="text-align:left">4节点</td>
+<td style="text-align:left">挂1节点</td>
+<td style="text-align:left">3可用节点 &gt; (4 / 2) 即 3 &gt; 2</td>
+<td style="text-align:left">过半，集群继续可用</td>
+</tr>
+<tr>
+<td style="text-align:left">3节点</td>
+<td style="text-align:left">挂2节点</td>
+<td style="text-align:left">1可用节点 = (3 / 2) 即 1 = 1</td>
+<td style="text-align:left">未过半，集群不可用</td>
+</tr>
+<tr>
+<td style="text-align:left">4节点</td>
+<td style="text-align:left">挂2节点</td>
+<td style="text-align:left">2可用节点 = (4 / 2) 即 2 = 2</td>
+<td style="text-align:left">未过半，集群不可用</td>
+</tr>
+</tbody>
+</table>
+<p>所以3节点和4节点组成的集群在ZooKeeper过半原则下都最多只能挂1节点，但是4比3要多浪费一个节点资源。</p>
+<h2 id="场景实战"><a href="#场景实战" class="headerlink" title="场景实战"></a>场景实战</h2><p>我们以两个场景来了解集群不可用时Leader重新选举的过程。</p>
+<h3 id="三个节点集群重选Leader"><a href="#三个节点集群重选Leader" class="headerlink" title="三个节点集群重选Leader"></a>三个节点集群重选Leader</h3><p>假设有3节点组成的集群，分别是server.1(Follower)、server.2(Leader)、server.3(Follower)。此时server.2不可用了。集群会产生以下变化</p>
+<ol>
+<li><p>集群不可用<br>因为Leader挂了，集群不可用于事务请求了。</p>
+</li>
+<li><p>状态变更<br>所有Follower节点变更自身状态为LOOKING，并且变更自身投票。投票内容就是自己节点的<code>事务ID</code>和<code>server.id</code>。我们以<code>(事务ID, server.id)</code>表示。<br>假设server.1的事务id是10，变更的自身投票就是(10, 1)；server.3的事务id是8，变更的自身投票就是(8, 3)。</p>
+</li>
+<li><p>首轮投票<br>将变更的投票发给集群中所有的Follower节点。server.1将(10, 1)发给集群中所有Follower，包括server.1自己。同样，server.3将(8, 3)发给所有Follower，包括server.3自己。<br>所以server.1将收到(10, 1)和(8, 3)两个投票，server.3将收到(8, 3)和(10, 1)两个投票。</p>
+</li>
+<li><p>投票PK<br>每个Follower节点除了发起投票外，还接其他Follower发来的投票，并与自己的投票PK(比较两个提议的<code>事务ID</code>以及<code>server.id</code>)，PK结果决定是否要变更自身状态并再次投票。<br>对于server.1来说收到(10, 1)和(8, 3)两个投票，与自己变更的投票比较后没有一个比自身投票(10, 1)要大的，所以server.1维持自身投票不变。<br>对于server.3来说收到(10, 1)和(8, 3)两个投票，与自身变更的投票比较后认为server.1发来的投票要比自身的投票大，所以server.3会变更自身投票并将变更后的投票发给集群中所有Follower。</p>
+</li>
+<li><p>第二轮投票<br>server.3将自身投票变更为(10, 1)后再次将投票发给集群中所有Follower。<br>对于server.1来说在第二轮收到了(10, 1)投票，server.1经过PK后继续维持不变。<br>对于server.3来说在第二轮收到了(10, 1)投票，因为server.3自身已变更为(10, 1)投票，所以本次也维持不变。<br>此时server.1和server.3在投票上达成一致。</p>
+</li>
+<li><p>投票接收桶<br>节点接收的投票存储在一个接收桶里，每个Follower的投票结果在桶内只记录一次。ZooKeeper源码中接收桶用Map实现。<br>下面代码片段是ZooKeeper定义的接收桶，以及向桶内写入数据。Map.Key用来存储投票来源节点的server.id，Vote则是对应节点的投票信息。节点收到投票后会更新这个接收桶<code>也就是说桶里存储了所有Follower节点的投票并且仅存最后一次的投票结果</code></p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">HashMap&lt;Long, Vote&gt; recvset = <span class="keyword">new</span> HashMap&lt;Long, Vote&gt;();</span><br><span class="line">recvset.put(n.sid, <span class="keyword">new</span> Vote(n.leader, n.zxid, n.electionEpoch, n.peerEpoch));</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>统计投票<br>接收到投票后每次都会尝试统计投票，投票统计过半后选举成功。<br>投票统计的数据来源于<code>投票接收桶</code>里的投票数据，我们从头描述这个场景，来看一下接收桶里的数据变化情况。<br>server.2挂了后，server.1和server.3发起第一轮投票。<br>server.1接收到来自server.1的(10, 1)投票和来自server.3的(8, 3)投票；<br>server.3同样接收到来自server.1的(10, 1)投票和来自server.3的(8, 3)投票。此时server.1和server.3接收桶里的数据是这样的<br><img src="https://tianshushi.github.io/2019/03/02/ZooKeeper集群与Leader选举/投票桶内数据变化-第一轮投票.jpg" alt="第一轮投票桶内数据"><br>server.3经过PK后认为server.1的选票比自己要大，所以变更了自己的投票并重新发起投票。<br>server.1收到了来自server.3的(10, 1)投票;server.3收到了来自sever.3的(10, 1)投票。此时server.1和server.3接收桶里的数据变成了这样<br><img src="https://tianshushi.github.io/2019/03/02/ZooKeeper集群与Leader选举/投票桶内数据变化-第二轮.jpg" alt="第二轮投票桶内数据"><br>基于ZooKeeper过半原则：桶内投票选举server.1作为Leader出现2次，满足了过半 <code>2 &gt; 3/2</code> 即 2&gt;1。<br>最后sever.1节点晋升为Leader，server.3变更为Follower。</p>
+</li>
+</ol>
+<h3 id="集群扩容Leader启动时机"><a href="#集群扩容Leader启动时机" class="headerlink" title="集群扩容Leader启动时机"></a>集群扩容Leader启动时机</h3><p>ZooKeeper集群扩容需要在<code>zoo.cfg</code>配置文件中加入新节点。扩容流程在<a href="https://tianshushi.github.io/2019/02/27/ZooKeeper%E5%85%A5%E9%97%A8/#ZooKeeper%E6%89%A9%E5%AE%B9%E5%92%8C%E7%BC%A9%E5%AE%B9" target="_blank" rel="noopener">ZooKeeper扩容</a>中介绍。这里我们以3节点扩容到5节点时，Leader启动时机做一个讨论。<br>假设目前有3个节点组成集群，分别是server.1(Follower)、server.2(Leader)、server.3(Follower)，假设集群中节点事务ID相同。配置文件如下。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">server.1=localhost:2881:3881</span><br><span class="line">server.2=localhost:2882:3882</span><br><span class="line">server.3=localhost:2883:3883</span><br></pre></td></tr></table></figure>
+<ol>
+<li>新节点加入集群<br>集群中新增server.4和server.5两个节点，首先修改server.4和server.5的<code>zoo.cfg</code>配置并启动。节点4和5在启动后会变更自身投票状态，发起一轮Leader选举投票。server.1、server.2、server.3收到投票后由于集群中已有选定Leader，所以会直接反馈server.4和server.5投票结果：<code>server.2</code>是Leader。server.4和server.5收到投票后基于过半原则认定server.2是Leader，自身便切换为Follower。</li>
+</ol>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">#节点server.1、server.2、server.3配置</span><br><span class="line">server.1=localhost:2881:3881</span><br><span class="line">server.2=localhost:2882:3882</span><br><span class="line">server.3=localhost:2883:3883</span><br><span class="line"></span><br><span class="line">#节点server.4、server.5配置</span><br><span class="line">server.1=localhost:2881:3881</span><br><span class="line">server.2=localhost:2882:3882</span><br><span class="line">server.3=localhost:2883:3883</span><br><span class="line">server.4=localhost:2884:3884</span><br><span class="line">server.5=localhost:2885:3885</span><br></pre></td></tr></table></figure>
+<ol start="2">
+<li>停止Leader<br>server.4和server.5的加入需要修改集群server.1、server.2、server.3的<code>zoo.cfg</code>配置并重启。但是Leader节点何时重启是有讲究的，因为Leader重启会导致集群中Follower发起Leader重新选举。在server.4和server.5两个新节点正常加入后，集群不会因为新节点加入变更Leader，所以目前server.2依然是Leader。<br>我们以一个错误的顺序启动，看一下集群会发生什么样的变化。修改server.2<code>zoo.cfg</code>配置文件，增加server.4和server.5的配置并<code>停止</code>server.2服务。停止server.2后，Leader不存在了，集群中所有Follower会发起投票。当server.1和server.3发起投票时并不会将投票发给server.4和server.5，因为在server.1和server.3的集群配置中不包含server.4和server.5节点。相反，server.4和server.5会把选票发给集群中所有节点。也就是说对于server.1和server.3他们认为集群中只有3个节点。对于server.4和server.5他们认为集群中有5个节点。<br>根据过半原则，server.1和server.3很快会选出一个新Leader，我们这里假设server.3晋级成为了新Leader。但是我们没有启动server.2的情况下，因为投票不满足过半原则，server.4和server.5会一直做投票选举Leader的动作。截止到现在集群中节点状态是这样的</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">server</th>
+<th style="text-align:left">状态</th>
+<th style="text-align:left">投票桶(来源server.id，推选leaderID)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">server.1</td>
+<td style="text-align:left">Follower</td>
+<td style="text-align:left">(1, 3) (3, 3)</td>
+</tr>
+<tr>
+<td style="text-align:left">server.2</td>
+<td style="text-align:left">宕机</td>
+<td style="text-align:left">-</td>
+</tr>
+<tr>
+<td style="text-align:left">server.3</td>
+<td style="text-align:left">Leader</td>
+<td style="text-align:left">(1, 3) (3, 3)</td>
+</tr>
+<tr>
+<td style="text-align:left">server.4</td>
+<td style="text-align:left">Looking</td>
+<td style="text-align:left">(4, 5) (5, 5)</td>
+</tr>
+<tr>
+<td style="text-align:left">server.5</td>
+<td style="text-align:left">Looking</td>
+<td style="text-align:left">(4, 5) (5, 5)</td>
+</tr>
+</tbody>
+</table>
+<ol start="3">
+<li>启动Leader<br>现在，我们启动server.2。因为server.2<code>zoo.cfg</code>已经是server.1到serverv.5的全量配置，在server.2启动后会发起选举投票，同时serverv.4和serverv.5也在不断的发起选举投票。当server.2的选举轮次和serverv.4与serverv.5选举轮次对齐后，最终server.2会变更自己的状态，认定server.5是Leaader。<br>意想不到的事情发生了，出现两个Leader</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">server</th>
+<th style="text-align:left">状态</th>
+<th style="text-align:left">投票桶(来源server.id，推选leaderID)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">server.1</td>
+<td style="text-align:left">Follower</td>
+<td style="text-align:left">(1, 3), (2, 2), (3, 3)</td>
+</tr>
+<tr>
+<td style="text-align:left">server.2</td>
+<td style="text-align:left">Follower</td>
+<td style="text-align:left">(1, 3) (2, 5), (3, 3), (4, 5), (5, 5)</td>
+</tr>
+<tr>
+<td style="text-align:left">server.3</td>
+<td style="text-align:left">Leader</td>
+<td style="text-align:left">(1, 3), (2, 2), (3, 3)</td>
+</tr>
+<tr>
+<td style="text-align:left">server.4</td>
+<td style="text-align:left">Follower</td>
+<td style="text-align:left">(2, 5), (4, 5) (5, 5)</td>
+</tr>
+<tr>
+<td style="text-align:left">server.5</td>
+<td style="text-align:left">Leader</td>
+<td style="text-align:left">(2, 5), (4, 5) (5, 5)</td>
+</tr>
+</tbody>
+</table>
+<p>ZooKeeper集群扩容时，如果Leader节点最后启动就可以避免这类问题发生，因为在Leader节点重启前，所有的Follower节点<code>zoo.cfg</code>配置已经是相同的，他们基于同一个集群配置两两互联，做投票选举。</p>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+      
+    
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/ZooKeeper/" rel="tag"># ZooKeeper</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2019/02/27/ZooKeeper入门/" rel="next" title="ZooKeeper入门">
+                <i class="fa fa-chevron-left"></i> ZooKeeper入门
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2019/04/24/Flink-Kafka-Connector/" rel="prev" title="Flink Kafka Connector与Exactly Once剖析">
+                Flink Kafka Connector与Exactly Once剖析 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+  </div>
+
+
+          </div>
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">说天书</p>
+              <div class="site-description motion-element" itemprop="description"></div>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/">
+                
+                    <span class="site-state-item-count">7</span>
+                    <span class="site-state-item-name">日志</span>
+                  </a>
+                </div>
+              
+
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">5</span>
+                    <span class="site-state-item-name">标签</span>
+                  
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+
+          
+
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </div>
+
+      
+      <!--noindex-->
+        <div class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+            
+            
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#高可用"><span class="nav-number">1.</span> <span class="nav-text">高可用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#集群至少由3个节点组成"><span class="nav-number">1.1.</span> <span class="nav-text">集群至少由3个节点组成</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#并非节点越多越好"><span class="nav-number">1.2.</span> <span class="nav-text">并非节点越多越好</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#集群规模为奇数"><span class="nav-number">1.3.</span> <span class="nav-text">集群规模为奇数</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#集群配置"><span class="nav-number">1.4.</span> <span class="nav-text">集群配置</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#集群角色"><span class="nav-number">2.</span> <span class="nav-text">集群角色</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Leader选举"><span class="nav-number">3.</span> <span class="nav-text">Leader选举</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#选举机制"><span class="nav-number">3.1.</span> <span class="nav-text">选举机制</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#过半原则"><span class="nav-number">3.2.</span> <span class="nav-text">过半原则</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#场景实战"><span class="nav-number">4.</span> <span class="nav-text">场景实战</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#三个节点集群重选Leader"><span class="nav-number">4.1.</span> <span class="nav-text">三个节点集群重选Leader</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#集群扩容Leader启动时机"><span class="nav-number">4.2.</span> <span class="nav-text">集群扩容Leader启动时机</span></a></li></ol></li></ol></div>
+            
+
+          </div>
+        </div>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+  
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love" id="animate">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">说天书</span>
+
+  
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a href="https://hexo.io" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v3.8.0</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 – <a href="https://theme-next.org" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.0.1</div>
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="post-meta-item-icon">
+      <i class="fa fa-user"></i>
+    </span>
+    <span class="site-uv" title="总访客量">
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+    </span>
+  
+
+  
+    <span class="post-meta-divider">|</span>
+  
+
+  
+    <span class="post-meta-item-icon">
+      <i class="fa fa-eye"></i>
+    </span>
+    <span class="site-pv" title="总访问量">
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+    
+
+    
+  </div>
+
+  
+
+<script>
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script src="/lib/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+
+  
+
+
+  <script src="/js/src/utils.js?v=7.0.1"></script>
+
+  <script src="/js/src/motion.js?v=7.0.1"></script>
+
+
+
+  
+  
+
+
+  <script src="/js/src/affix.js?v=7.0.1"></script>
+
+  <script src="/js/src/schemes/pisces.js?v=7.0.1"></script>
+
+
+
+
+  
+  <script src="/js/src/scrollspy.js?v=7.0.1"></script>
+<script src="/js/src/post-details.js?v=7.0.1"></script>
+
+
+
+  
+
+
+  <script src="/js/src/next-boot.js?v=7.0.1"></script>
+
+
+  
+
+  
+
+  
+
+  
+
+
+  
+
+
+  
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

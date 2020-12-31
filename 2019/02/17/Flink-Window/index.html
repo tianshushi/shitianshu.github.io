@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+<html class="theme-next gemini use-motion" lang="zh-CN">
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2">
+
+<link rel="stylesheet" href="/css/main.css?v=7.0.1">
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=7.0.1">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=7.0.1">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=7.0.1">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=7.0.1" color="#222">
+
+
+
+
+
+
+
+<script id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Gemini',
+    version: '7.0.1',
+    sidebar: {"position":"left","display":"post","offset":12,"onmobile":false,"dimmer":false},
+    back2top: true,
+    back2top_sidebar: false,
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="Window意为窗口。在流处理系统中数据源源不断流入到系统，我们可以逐条处理流入的数据，也可以按一定规则一次处理流中的多条数据。当处理数据时程序需要知道什么时候开始处理、处理哪些数据。窗口提供了这样一种依据，决定了数据何时开始处理。 Flink内置WindowFlink有3个内置Window  以事件数量驱动的Count Window 以会话间隔驱动的Session Window 以时间驱动的Ti">
+<meta name="keywords" content="Flink">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Flink Window基本概念与实现原理">
+<meta property="og:url" content="http://yoursite.com/2019/02/17/Flink-Window/index.html">
+<meta property="og:site_name" content="天书说">
+<meta property="og:description" content="Window意为窗口。在流处理系统中数据源源不断流入到系统，我们可以逐条处理流入的数据，也可以按一定规则一次处理流中的多条数据。当处理数据时程序需要知道什么时候开始处理、处理哪些数据。窗口提供了这样一种依据，决定了数据何时开始处理。 Flink内置WindowFlink有3个内置Window  以事件数量驱动的Count Window 以会话间隔驱动的Session Window 以时间驱动的Ti">
+<meta property="og:locale" content="zh-CN">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/TumblingCountWindow.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/SlidingCountWindow.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/SessionWindow.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/TumblingTimeWindow.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/SlidingTimeWindow.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/AssignerClass.png">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/MergingWindowClass.png">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/operator_create.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/processElement.jpg">
+<meta property="og:updated_time" content="2019-04-01T01:03:06.000Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Flink Window基本概念与实现原理">
+<meta name="twitter:description" content="Window意为窗口。在流处理系统中数据源源不断流入到系统，我们可以逐条处理流入的数据，也可以按一定规则一次处理流中的多条数据。当处理数据时程序需要知道什么时候开始处理、处理哪些数据。窗口提供了这样一种依据，决定了数据何时开始处理。 Flink内置WindowFlink有3个内置Window  以事件数量驱动的Count Window 以会话间隔驱动的Session Window 以时间驱动的Ti">
+<meta name="twitter:image" content="https://tianshushi.github.io/2019/02/17/Flink-Window/TumblingCountWindow.jpg">
+
+
+
+
+
+  
+  
+  <link rel="canonical" href="http://yoursite.com/2019/02/17/Flink-Window/">
+
+
+
+<script id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>Flink Window基本概念与实现原理 | 天书说</title>
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .motion-element,
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-title { opacity: initial; }
+
+  .use-motion .logo,
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-CN">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">天书说</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+    
+    
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="切换导航栏">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+        
+          
+          <li class="menu-item menu-item-home">
+
+    
+    
+    
+      
+    
+
+    
+
+    <a href="/" rel="section"><i class="menu-item-icon fa fa-fw fa-home"></i> <br>首页</a>
+
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-archives">
+
+    
+    
+    
+      
+    
+
+    
+
+    <a href="/archives/" rel="section"><i class="menu-item-icon fa fa-fw fa-archive"></i> <br>归档</a>
+
+  </li>
+
+      
+      
+    </ul>
+  
+
+  
+
+  
+</nav>
+
+
+
+  
+
+
+
+</div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+            
+
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2019/02/17/Flink-Window/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="说天书">
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="天书说">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Flink Window基本概念与实现原理
+
+              
+            
+          </h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+
+            
+            
+            
+
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+
+              
+                
+              
+
+              <time title="创建时间：2019-02-17 17:48:50" itemprop="dateCreated datePublished" datetime="2019-02-17T17:48:50+08:00">2019-02-17</time>
+            
+
+            
+              
+
+              
+                
+                <span class="post-meta-divider">|</span>
+                
+
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                
+                  <span class="post-meta-item-text">更新于</span>
+                
+                <time title="修改时间：2019-04-01 09:03:06" itemprop="dateModified" datetime="2019-04-01T09:03:06+08:00">2019-04-01</time>
+              
+            
+          </span>
+
+          
+
+          
+            
+            
+          
+
+          
+          
+
+          
+            <span class="post-meta-divider">|</span>
+            <span class="post-meta-item-icon">
+            <i class="fa fa-eye"></i>
+             阅读次数： 
+            <span class="busuanzi-value" id="busuanzi_value_page_pv"></span>
+            </span>
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>Window意为窗口。在流处理系统中数据源源不断流入到系统，我们可以逐条处理流入的数据，也可以按一定规则一次处理流中的多条数据。当处理数据时程序需要知道什么时候开始处理、处理哪些数据。窗口提供了这样一种依据，决定了数据何时开始处理。</p>
+<h2 id="Flink内置Window"><a href="#Flink内置Window" class="headerlink" title="Flink内置Window"></a>Flink内置Window</h2><p>Flink有3个内置Window</p>
+<ul>
+<li>以事件数量驱动的Count Window</li>
+<li>以会话间隔驱动的Session Window</li>
+<li>以时间驱动的Time Window</li>
+</ul>
+<p>本文围绕这3个内置窗口展开讨论，我们首先了解这3个窗口在运行时产生的现象，最后再讨论它们的实现原理。</p>
+<a id="more"></a>
+<h3 id="Count-Window"><a href="#Count-Window" class="headerlink" title="Count Window"></a>Count Window</h3><p>计数窗口，采用 <strong><em>事件数量</em></strong> 作为窗口处理依据。计数窗口分为滚动和滑动两类，使用<code>keyedStream.countWindow</code>实现计数窗口定义。</p>
+<ul>
+<li>Tumbling Count Window 滚动计数窗口<br><code>例子</code>：以用户分组，当每位用户有3次付款事件时计算一次该用户付款总金额。下图中“消息A、B、C、D”代表4位不同用户，我们以A、B、C、D分组并计算金额。</li>
+</ul>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** 每3个事件，计算窗口内数据 */</span></span><br><span class="line">keyedStream.countWindow(<span class="number">3</span>);</span><br></pre></td></tr></table></figure>
+<p><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/TumblingCountWindow.jpg" alt="Tumbling Count Window"></p>
+<ul>
+<li>Sliding Count Window 滑动计数窗口<br><code>例子</code>：一位用户每3次付款事件计算最近4次付款事件总金额。</li>
+</ul>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** 每3个事件，计算最近4个事件消息 */</span></span><br><span class="line">keyedStream.countWindow(<span class="number">4</span>,<span class="number">3</span>);</span><br></pre></td></tr></table></figure>
+<p><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/SlidingCountWindow.jpg" alt="Sliding Count Window"></p>
+<h3 id="Session-Window"><a href="#Session-Window" class="headerlink" title="Session Window"></a>Session Window</h3><p>会话窗口,采用 <strong><em>会话持续时长</em></strong> 作为窗口处理依据。设置指定的会话持续时长时间，在这段时间中不再出现会话则认为超出会话时长。 </p>
+<p><code>例子</code>：每只股票超过2秒没有交易事件时计算窗口内交易总金额。下图中“消息A、消息B”代表两只不同的股票。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** 会话持续2秒。当超过2秒不再出现会话认为会话结束 */</span></span><br><span class="line">keyedStream.window(ProcessingTimeSessionWindows.withGap(Time.seconds(<span class="number">2</span>)))</span><br></pre></td></tr></table></figure>
+<p><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/SessionWindow.jpg" alt="Session Window"></p>
+<h3 id="Time-Window"><a href="#Time-Window" class="headerlink" title="Time Window"></a>Time Window</h3><p>时间窗口，采用 <strong><em>时间</em></strong> 作为窗口处理依据。时间窗分为滚动和滑动两类，使用<code>keyedStream.timeWindow</code>实现时间窗定义。</p>
+<ul>
+<li>Tumbling Time Window 滚动时间窗口：<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** 每1分钟，计算窗口数据 */</span></span><br><span class="line">keyedStream.timeWindow(Time.minutes(<span class="number">1</span>));</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/TumblingTimeWindow.jpg" alt="Tumbling Time Window"></p>
+<ul>
+<li>Sliding Time Window 滑动时间窗口：<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** 每半分钟，计算最近1分钟窗口数据 */</span></span><br><span class="line">keyedStream.timeWindow(Time.minutes(<span class="number">1</span>), Time.seconds(<span class="number">30</span>));</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/SlidingTimeWindow.jpg" alt="Sliding Time Window"></p>
+<h2 id="Flink-Window组件"><a href="#Flink-Window组件" class="headerlink" title="Flink Window组件"></a>Flink Window组件</h2><p>Flink Window使用3个组件协同实现了内置的3个窗口。通过对这3个组件不同的组合，可以满足许多场景的窗口定义。<br>WindowAssigner组件 <strong><em>为数据分配窗口</em></strong>、Trigger组件决定 <strong><em>如何处理窗口中的数据</em></strong>、借助Evictor组件实现 <strong><em>灵活清理窗口中数据时机</em></strong>。</p>
+<h3 id="WindowAssigner"><a href="#WindowAssigner" class="headerlink" title="WindowAssigner"></a>WindowAssigner</h3><p>当有数据流入到Window Operator时需要按照一定规则将数据分配给窗口，<code>WindowAssigner</code>为数据分配窗口。下面代码片段是<code>WindowAssigner</code>部分定义，<code>assignWindows</code>方法定义返回的结果是一个集合，也就是说数据允许被分配到多个窗口中。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*** WindowAssigner关键接口定义 ***/</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">abstract</span> <span class="class"><span class="keyword">class</span> <span class="title">WindowAssigner</span>&lt;<span class="title">T</span>, <span class="title">W</span> <span class="keyword">extends</span> <span class="title">Window</span>&gt; <span class="keyword">implements</span> <span class="title">Serializable</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/** 分配数据到窗口集合并返回 */</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">abstract</span> Collection&lt;W&gt; <span class="title">assignWindows</span><span class="params">(T element, <span class="keyword">long</span> timestamp, WindowAssignerContext context)</span></span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<h4 id="Flink内置WindowAssigner"><a href="#Flink内置WindowAssigner" class="headerlink" title="Flink内置WindowAssigner"></a>Flink内置WindowAssigner</h4><p>Flink针对不同窗口类型实现了相应的WindowAssigner。Flink 1.7.0继承关系如下图<br><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/AssignerClass.png" alt="WindowAssigner实现类"></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Assigner</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">GlobalWindows</td>
+<td style="text-align:left">所有数据都分配到同一个窗口(GlobalWindow)</td>
+</tr>
+<tr>
+<td style="text-align:left">TumblingProcessingTimeWindows</td>
+<td style="text-align:left">基于处理时间的滚动窗口分配处理</td>
+</tr>
+<tr>
+<td style="text-align:left">TumblingEventTimeWindows</td>
+<td style="text-align:left">基于事件时间的滚动窗口分配处理</td>
+</tr>
+<tr>
+<td style="text-align:left">SlidingEventTimeWindows</td>
+<td style="text-align:left">基于事件时间的滑动窗口分配处理</td>
+</tr>
+<tr>
+<td style="text-align:left">SlidingProcessingTimeWindows</td>
+<td style="text-align:left">基于处理时间的滑动窗口分配处理</td>
+</tr>
+<tr>
+<td style="text-align:left">MergingWindowAssigner</td>
+<td style="text-align:left">一个抽象类，本身是一个WindowAssigner。内部定义了Window可以Merge的特性。</td>
+</tr>
+<tr>
+<td style="text-align:left">EventTimeSessionWindows</td>
+<td style="text-align:left">基于事件时间可Merge的窗口分配处理</td>
+</tr>
+<tr>
+<td style="text-align:left">ProcessingTimeSessionWindows</td>
+<td style="text-align:left">基于处理时间可Merge的窗口分配处理</td>
+</tr>
+</tbody>
+</table>
+<h3 id="Trigger"><a href="#Trigger" class="headerlink" title="Trigger"></a>Trigger</h3><p>Trigger触发器，它定义了3个触发动作，并且定义了触发动作处理完毕后的返回结果。返回结果交给Window Operator后由Window Operator决定后续操作。也就是说，Trigger通过具体的动作处理结果决定窗口是否应该被处理、被清除、被处理+清除、还是什么都不做。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** Trigger关键接口定义 */</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">abstract</span> <span class="class"><span class="keyword">class</span> <span class="title">Trigger</span>&lt;<span class="title">T</span>, <span class="title">W</span> <span class="keyword">extends</span> <span class="title">Window</span>&gt; <span class="keyword">implements</span> <span class="title">Serializable</span> </span>&#123;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">/*** 新的数据进入窗口时触发 ***/</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">abstract</span> TriggerResult <span class="title">onElement</span><span class="params">(T element, <span class="keyword">long</span> timestamp, W window, TriggerContext ctx)</span> <span class="keyword">throws</span> Exception</span>;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">/*** 处理时间计数器触发 ***/</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">abstract</span> TriggerResult <span class="title">onProcessingTime</span><span class="params">(<span class="keyword">long</span> time, W window, TriggerContext ctx)</span> <span class="keyword">throws</span> Exception</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*** 事件时间计数器触发 ***/</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">abstract</span> TriggerResult <span class="title">onEventTime</span><span class="params">(<span class="keyword">long</span> time, W window, TriggerContext ctx)</span> <span class="keyword">throws</span> Exception</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>当有数据流入Window Operator时会触发<code>onElement</code>方法、当处理时间和事件时间生效时会触发<code>onProcessingTime</code>和<code>onEventTime</code>方法。每个触发动作的返回结果用<code>TriggerResult</code>定义。</p>
+<h4 id="TriggerResult返回类型及说明"><a href="#TriggerResult返回类型及说明" class="headerlink" title="TriggerResult返回类型及说明"></a>TriggerResult返回类型及说明</h4><p>Trigger触发运算后返回处理结果，处理结果使用<code>TriggerResult</code>枚举表示。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">enum</span> TriggerResult &#123;</span><br><span class="line">    CONTINUE,FIRE,PURGE,FIRE_AND_PURGE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">返回类型</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">CONTINUE</td>
+<td style="text-align:left">不做任何操作</td>
+</tr>
+<tr>
+<td style="text-align:left">FIRE</td>
+<td style="text-align:left">处理窗口数据，窗口计算后不做清理。这意味着下次FIRE时候可以再次用来计算（比如滑动计数窗口）。</td>
+</tr>
+<tr>
+<td style="text-align:left">PURGE</td>
+<td style="text-align:left">移除窗口和窗口中的数据</td>
+</tr>
+<tr>
+<td style="text-align:left">FIRE_AND_PURGE</td>
+<td style="text-align:left">FIRE+PURGE的组合处理，即处理并移除窗口中的数据</td>
+</tr>
+</tbody>
+</table>
+<h4 id="Flink内置Trigger"><a href="#Flink内置Trigger" class="headerlink" title="Flink内置Trigger"></a>Flink内置Trigger</h4><p>Flink的内置窗口（Counter、Session、Time）有自己的触发器实现。下表为不同窗口使用的触发器。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">窗口</th>
+<th style="text-align:left">触发器</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Session Window</td>
+<td style="text-align:left">EventTimeTrigger</td>
+<td style="text-align:left">基于事件时间/摄取时间的触发器实现</td>
+</tr>
+<tr>
+<td style="text-align:left">Session Window</td>
+<td style="text-align:left">ProcessingTimeTrigger</td>
+<td style="text-align:left">基于处理时间的触发器实现</td>
+</tr>
+<tr>
+<td style="text-align:left">Time Window</td>
+<td style="text-align:left">EventTimeTrigger</td>
+<td style="text-align:left">基于滚动、事件时间/摄取时间的触发器实现</td>
+</tr>
+<tr>
+<td style="text-align:left">Time Window</td>
+<td style="text-align:left">ProcessingTimeTrigger</td>
+<td style="text-align:left">基于滚动、处理时间的触发器实现</td>
+</tr>
+<tr>
+<td style="text-align:left">Time Window</td>
+<td style="text-align:left">EventTimeTrigger</td>
+<td style="text-align:left">基于滑动、事件时间/摄取时间的触发器实现</td>
+</tr>
+<tr>
+<td style="text-align:left">Time Window</td>
+<td style="text-align:left">ProcessingTimeTrigger</td>
+<td style="text-align:left">基于滑动、处理时间的触发器实现</td>
+</tr>
+<tr>
+<td style="text-align:left">-</td>
+<td style="text-align:left">NeverTrigger</td>
+<td style="text-align:left">GlobalWindows提供，每个触发逻辑不执行任何处理</td>
+</tr>
+<tr>
+<td style="text-align:left">-</td>
+<td style="text-align:left">ContinuousEventTimeTrigger</td>
+<td style="text-align:left">根据设置的时间间隔连续触发，时间间隔依赖于水印时间戳</td>
+</tr>
+<tr>
+<td style="text-align:left">-</td>
+<td style="text-align:left">ContinuousProcessingTimeTrigger</td>
+<td style="text-align:left">根据设置的时间间隔连续触发,时间间隔依赖于运行程序所在机器系统时钟</td>
+</tr>
+</tbody>
+</table>
+<h3 id="Evictor"><a href="#Evictor" class="headerlink" title="Evictor"></a>Evictor</h3><p>Evictor驱逐者，如果定义了Evictor当执行窗口处理前会删除窗口内指定数据再交给窗口处理，或等窗口执行处理后再删除窗口中指定数据。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">Evictor</span>&lt;<span class="title">T</span>, <span class="title">W</span> <span class="keyword">extends</span> <span class="title">Window</span>&gt; <span class="keyword">extends</span> <span class="title">Serializable</span> </span>&#123;</span><br><span class="line">    <span class="comment">/** 在窗口处理前删除数据 */</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">evictBefore</span><span class="params">(Iterable&lt;TimestampedValue&lt;T&gt;&gt; elements, <span class="keyword">int</span> size, W window, EvictorContext evictorContext)</span></span>;</span><br><span class="line">    <span class="comment">/** 在窗口处理后删除数据 */</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">evictAfter</span><span class="params">(Iterable&lt;TimestampedValue&lt;T&gt;&gt; elements, <span class="keyword">int</span> size, W window, EvictorContext evictorContext)</span></span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<h4 id="Flink内置Evictor"><a href="#Flink内置Evictor" class="headerlink" title="Flink内置Evictor"></a>Flink内置Evictor</h4><table>
+<thead>
+<tr>
+<th style="text-align:left">Evictor</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">CountEvictor</td>
+<td style="text-align:left">可以保持窗口中一定数量的事件数据。在滑动计数窗口中实现evictBefore方法，以保持窗口中存在最近N次事件，从而达到了滑动效果。</td>
+</tr>
+<tr>
+<td style="text-align:left">TimeEvictor</td>
+<td style="text-align:left">可以让元素在窗口中存在一定的时间，较老的数据会被删除。</td>
+</tr>
+<tr>
+<td style="text-align:left">DeltaEvictor</td>
+<td style="text-align:left">根据DeltaFunction实现和阀值决定如何清理数据</td>
+</tr>
+</tbody>
+</table>
+<h2 id="实现原理"><a href="#实现原理" class="headerlink" title="实现原理"></a>实现原理</h2><p>通过<code>KeyedStream</code>可以直接创建Count Window和Time Window。他们最终都是基于<code>window(WindowAssigner)</code>方法创建，在window方法中创建<code>WindowedStream</code>实例，参数使用当前的KeyedStream对象和指定的WindowAssigner。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** 依据WindowAssigner实例化WindowedStream */</span></span><br><span class="line"><span class="keyword">public</span> &lt;W extends Window&gt; <span class="function">WindowedStream&lt;T, KEY, W&gt; <span class="title">window</span><span class="params">(WindowAssigner&lt;? <span class="keyword">super</span> T, W&gt; assigner)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> WindowedStream&lt;&gt;(<span class="keyword">this</span>, assigner);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** WindowedStream构造器 */</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="title">WindowedStream</span><span class="params">(KeyedStream&lt;T, K&gt; input, WindowAssigner&lt;? <span class="keyword">super</span> T, W&gt; windowAssigner)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.input = input;</span><br><span class="line">    <span class="keyword">this</span>.windowAssigner = windowAssigner;</span><br><span class="line">    <span class="keyword">this</span>.trigger = windowAssigner.getDefaultTrigger(input.getExecutionEnvironment());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>构造器执行完毕后，WindowedStream创建完成。构造器中初始化了3个属性。默认情况下trigger属性使用WindowAssigner提供的DefaultTrigger作为初始值。</p>
+<p>同时，WindowedStream提供了trigger方法用来覆盖默认的trigger。Flink内置的计数窗口就使用<code>windowedStream.trigger</code>方法覆盖了默认的trigger。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> WindowedStream&lt;T, K, W&gt; <span class="title">trigger</span><span class="params">(Trigger&lt;? <span class="keyword">super</span> T, ? <span class="keyword">super</span> W&gt; trigger)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (windowAssigner <span class="keyword">instanceof</span> MergingWindowAssigner &amp;&amp; !trigger.canMerge()) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> UnsupportedOperationException();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (windowAssigner <span class="keyword">instanceof</span> BaseAlignedWindowAssigner) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> UnsupportedOperationException();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">this</span>.trigger = trigger;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>在WindowedStream中还有一个比较重要的属性<code>evictor</code>，可以通过<code>evictor</code>方法设置。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> WindowedStream&lt;T, K, W&gt; <span class="title">evictor</span><span class="params">(Evictor&lt;? <span class="keyword">super</span> T, ? <span class="keyword">super</span> W&gt; evictor)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (windowAssigner <span class="keyword">instanceof</span> BaseAlignedWindowAssigner) &#123;</span><br><span class="line">	    <span class="keyword">throw</span> <span class="keyword">new</span> UnsupportedOperationException();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">this</span>.evictor = evictor;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>WindowedStream实现中根据evictor属性是否空(<code>null == evictor</code>)决定是创建<code>WindowOperator</code>还是<code>EvictingWindowOperator</code>。<code>EvictingWindowOperator</code>继承自<code>WindowOperator</code>，它主要扩展了evictor属性以及相关的逻辑处理。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">EvictingWindowOperator</span> <span class="keyword">extends</span> <span class="title">WindowOperator</span> </span>&#123;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> Evictor evictor;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>Evictor定义了清理数据的时机。在EvictingWindowOperator的<code>emitWindowContents</code>方法中，实现了清理数据逻辑调用。这也是EvictingWindowOperator与WindowOperator的主要区别。「在WindowOperator中压根就没有evictor的概念」<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">emitWindowContents</span><span class="params">(W window, Iterable&lt;StreamRecord&lt;IN&gt;&gt; contents, ListState&lt;StreamRecord&lt;IN&gt;&gt; windowState)</span> <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line">    <span class="comment">/** Window处理前数据清理 */</span></span><br><span class="line">    evictorContext.evictBefore(recordsWithTimestamp, Iterables.size(recordsWithTimestamp));</span><br><span class="line">    <span class="comment">/** Window处理 */</span></span><br><span class="line">    userFunction.process(triggerContext.key, triggerContext.window, processContext, projectedContents, timestampedCollector);</span><br><span class="line">    <span class="comment">/** Window处理后数据清理 */</span></span><br><span class="line">    evictorContext.evictAfter(recordsWithTimestamp, Iterables.size(recordsWithTimestamp));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<h3 id="Count-Window-API"><a href="#Count-Window-API" class="headerlink" title="Count Window API"></a>Count Window API</h3><p>下面代码片段是<code>KeyedStream</code>提供创建Count Window的API。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** 滚动计数窗口 */</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> WindowedStream&lt;T, KEY, GlobalWindow&gt; <span class="title">countWindow</span><span class="params">(<span class="keyword">long</span> size)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> window(GlobalWindows.create()).trigger(PurgingTrigger.of(CountTrigger.of(size)));</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/** 滑动计数窗口 */</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> WindowedStream&lt;T, KEY, GlobalWindow&gt; <span class="title">countWindow</span><span class="params">(<span class="keyword">long</span> size, <span class="keyword">long</span> slide)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> window(GlobalWindows.create())</span><br><span class="line">        .evictor(CountEvictor.of(size))</span><br><span class="line">        .trigger(CountTrigger.of(slide));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>滚动计数窗口与滑动计数窗口有几个差异</p>
+<ul>
+<li>入参不同</li>
+<li>滑动窗口使用了evictor组件</li>
+<li>两者使用的trigger组件不同</li>
+</ul>
+<p>下面我们对这几点差异做深入分析，看一看他们是如何影响滚动计数窗口和滑动计数窗口的。</p>
+<h4 id="Count-Window-Assigner"><a href="#Count-Window-Assigner" class="headerlink" title="Count Window Assigner"></a>Count Window Assigner</h4><p>通过方法<code>window(GlobalWindows.create())</code>创建WindowedStream实例，滚动计数窗口处理和滑动计数窗口处理都是基于<code>GlobalWindows</code>作为WindowAssigner来创建窗口处理器。<code>GlobalWindows</code>将所有数据都分配到同一个<code>GlobalWindow</code>中。「这里需要注意<code>GlobalWindows</code>是一个WindowAssigner，而<code>GlobalWindow</code>是一个Window」<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** GlobalWindows是一个WindowAssigner实现,这里只展示实现assignWindows的代码片段 */</span></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">GlobalWindows</span> <span class="keyword">extends</span> <span class="title">WindowAssigner</span>&lt;<span class="title">Object</span>, <span class="title">GlobalWindow</span>&gt; </span>&#123;</span><br><span class="line">    <span class="comment">/** 返回一个GlobalWindow */</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> Collection&lt;GlobalWindow&gt; <span class="title">assignWindows</span><span class="params">(Object element, <span class="keyword">long</span> timestamp, WindowAssignerContext context)</span> </span>&#123;</span><br><span class="line">        <span class="keyword">return</span> Collections.singletonList(GlobalWindow.get());</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>GlobalWindow继承了Window，表示为一个窗口。对外提供<code>get()</code>方法返回<code>GlobalWindow</code>实例，并且是个全局单例。所以当使用<code>GlobalWindows</code>作为WindowAssigner时，所有数据将被分配到一个窗口中。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** GlobalWindow是一个Window */</span></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">GlobalWindow</span> <span class="keyword">extends</span> <span class="title">Window</span> </span>&#123;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">final</span> GlobalWindow INSTANCE = <span class="keyword">new</span> GlobalWindow();</span><br><span class="line">    <span class="comment">/** 永远返回GlobalWindow单例 */</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> GlobalWindow <span class="title">get</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        <span class="keyword">return</span> INSTANCE;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<h4 id="Count-Window-Trigger"><a href="#Count-Window-Trigger" class="headerlink" title="Count Window Trigger"></a>Count Window Trigger</h4><p>滚动计数窗口创建时使用<code>PurgingTrigger.of(CountTrigger.of(size))</code>覆盖了GlobalWindows默认的Trigger，而滑动计数窗口创建时使用<code>CountTrigger.of(size)</code>覆盖了GlobalWindows默认的Trigger。</p>
+<p>PurgingTrigger是一个代理模式的Trigger实现，在计数窗口中PurgingTrigger代理了CountTrigger。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** PurgingTrigger代理的Trigger */</span></span><br><span class="line"><span class="keyword">private</span> Trigger&lt;T, W&gt; nestedTrigger;</span><br><span class="line"><span class="comment">/** PurgingTrigger私有构造器 */</span></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="title">PurgingTrigger</span><span class="params">(Trigger&lt;T, W&gt; nestedTrigger)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.nestedTrigger = nestedTrigger;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/** 为代理的Trigger构造一个PurgingTrigger实例 */</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> &lt;T, W extends Window&gt; <span class="function">PurgingTrigger&lt;T, W&gt; <span class="title">of</span><span class="params">(Trigger&lt;T, W&gt; nestedTrigger)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> PurgingTrigger&lt;&gt;(nestedTrigger);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>在这里比较一下<code>PurgingTrigger.onElement</code>和<code>CountTrigger.onElement</code>方法实现，帮助理解PurgingTrigger的作用。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** CountTrigger实现 */</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> TriggerResult <span class="title">onElement</span><span class="params">(Object element, <span class="keyword">long</span> timestamp, W window, TriggerContext ctx)</span> <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line">    ReducingState&lt;Long&gt; count = ctx.getPartitionedState(stateDesc);</span><br><span class="line">    count.add(<span class="number">1L</span>);</span><br><span class="line">    <span class="keyword">if</span> (count.get() &gt;= maxCount) &#123;</span><br><span class="line">	    count.clear();</span><br><span class="line">	    <span class="keyword">return</span> TriggerResult.FIRE;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> TriggerResult.CONTINUE;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">/** PurgingTrigger实现 */</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> TriggerResult <span class="title">onElement</span><span class="params">(T element, <span class="keyword">long</span> timestamp, W window, TriggerContext ctx)</span> <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line">    TriggerResult triggerResult = nestedTrigger.onElement(element, timestamp, window, ctx);</span><br><span class="line">    <span class="keyword">return</span> triggerResult.isFire() ? TriggerResult.FIRE_AND_PURGE : triggerResult;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>在CountTrigger实现中，当事件流入窗口后计数+1，之后比较窗口中事件数是否大于设定的最大数量，一旦大于最大数量返回FIRE。也就是说只处理窗口数据，不做清理。<br>在PurgingTrigger实现中，依赖CountTrigger的处理逻辑，但区别在于当CounterTrigger返回FIRE时PurgingTrigger返回FIRE_AND_PURGE。也就是说不仅处理窗口数据，还做数据清理。通过这种方式实现了滚动计数窗口数据不重叠。</p>
+<h4 id="Count-Window-Evictor"><a href="#Count-Window-Evictor" class="headerlink" title="Count Window Evictor"></a>Count Window Evictor</h4><p>滚动计数窗口和滑动计数窗口另一个区别在于滑动计数窗口通过<code>windowedStream.evictor(CountEvictor.of(size))</code>方法设置了Evictor，而滚动窗口并没有设置Evictor。<br>滑动计数窗口依赖Evictor组件在窗口处理前清除了指定数量以外的数据，再交给窗口处理。通过这种方式实现了窗口计算最近指定次数的事件数量。</p>
+<h4 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h4><table>
+<thead>
+<tr>
+<th style="text-align:left">计数窗口</th>
+<th style="text-align:left">WindowAssigner</th>
+<th style="text-align:left">Evictor</th>
+<th style="text-align:left">Trigger</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">滚动计数窗口</td>
+<td style="text-align:left">GlobalWindows</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">PurgingTrigger</td>
+<td style="text-align:left">窗口处理数据前后不清理数据，由Trigger返回值声明直接清理数据，清理数据依赖Trigger返回结果</td>
+</tr>
+<tr>
+<td style="text-align:left">滑动计数窗口</td>
+<td style="text-align:left">GlobalWindows</td>
+<td style="text-align:left">CountEvictor</td>
+<td style="text-align:left">CountTrigger</td>
+<td style="text-align:left">Trigger返回结果不能清理数据(返回结果不带PURGE)，在窗口处理完后数据会被保留下来，为下一个滑动窗口使用。因为使用了CountEvictor，会在窗口处理前清除不需要的数据</td>
+</tr>
+</tbody>
+</table>
+<!--
+引用[Jark](http://wuchong.me/blog/2016/05/25/flink-internals-window-mechanism/)的一张示意图来说明滑动窗口组件之间协同处理过程。
+假设有一个滑动计数窗口，每2个数据计算一次最近4个数据的总和。
+![滑动时间窗口处理](https://tianshushi.github.io/2019/02/17/Flink-Window/SlidingTimeWindow-processor.png)
+-->
+<h3 id="Time-Window-API"><a href="#Time-Window-API" class="headerlink" title="Time Window API"></a>Time Window API</h3><p>下面代码片段是<code>KeyedStream</code>中提供创建Time Window的API。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** 创建滚动时间窗口 */</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> WindowedStream&lt;T, KEY, TimeWindow&gt; <span class="title">timeWindow</span><span class="params">(Time size)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (environment.getStreamTimeCharacteristic() == TimeCharacteristic.ProcessingTime) &#123;</span><br><span class="line">        <span class="keyword">return</span> window(TumblingProcessingTimeWindows.of(size));</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> window(TumblingEventTimeWindows.of(size));</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">/** 创建滑动时间窗口 */</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> WindowedStream&lt;T, KEY, TimeWindow&gt; <span class="title">timeWindow</span><span class="params">(Time size, Time slide)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (environment.getStreamTimeCharacteristic() == TimeCharacteristic.ProcessingTime) &#123;</span><br><span class="line">        <span class="keyword">return</span> window(SlidingProcessingTimeWindows.of(size, slide));</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> window(SlidingEventTimeWindows.of(size, slide));</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>创建TimeWindow时会根据Flink应用当前时间类型<code>environment.getStreamTimeCharacteristic()</code>来决定使用哪个WindowAssigner创建窗口。</p>
+<p>Flink对时间分成了3类。处理时间、摄入时间、事件时间。使用<code>TimeCharacteristic</code>枚举定义。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">enum</span> TimeCharacteristic &#123;</span><br><span class="line">    <span class="comment">/** 处理时间 */</span></span><br><span class="line">    ProcessingTime,</span><br><span class="line">    <span class="comment">/** 摄入时间 */</span></span><br><span class="line">    IngestionTime,</span><br><span class="line">    <span class="comment">/** 事件时间 */</span></span><br><span class="line">    EventTime</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>对于Flink的3个时间概念，我们目前只需要了解</p>
+<ul>
+<li>处理时间(TimeCharacteristic.ProcessingTime)就是运行Flink环境的系统时钟产生的时间</li>
+<li>事件时间(TimeCharacteristic.EventTime)是业务上产生的时间，由数据自身携带</li>
+<li>摄入时间(TimeCharacteristic.IngestionTime)是数据进入到Flink的时间，它在底层实现上与事件时间相同。</li>
+</ul>
+<h4 id="Time-Window-Assigner"><a href="#Time-Window-Assigner" class="headerlink" title="Time Window Assigner"></a>Time Window Assigner</h4><p>下面的表格中展示了窗口类型和时间类型对应的<code>WindowAssigner</code>的实现类</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">时间窗口类型</th>
+<th style="text-align:left">时间类型</th>
+<th style="text-align:left">WindowAssigner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">滚动时间窗</td>
+<td style="text-align:left">ProcessingTime</td>
+<td style="text-align:left">TumblingProcessingTimeWindows</td>
+</tr>
+<tr>
+<td style="text-align:left">滚动时间窗</td>
+<td style="text-align:left">IngestionTime</td>
+<td style="text-align:left">TumblingEventTimeWindows</td>
+</tr>
+<tr>
+<td style="text-align:left">滚动时间窗</td>
+<td style="text-align:left">EventTime</td>
+<td style="text-align:left">TumblingEventTimeWindows</td>
+</tr>
+<tr>
+<td style="text-align:left">滑动时间窗</td>
+<td style="text-align:left">ProcessingTime</td>
+<td style="text-align:left">SlidingProcessingTimeWindows</td>
+</tr>
+<tr>
+<td style="text-align:left">滑动时间窗</td>
+<td style="text-align:left">IngestionTime</td>
+<td style="text-align:left">SlidingEventTimeWindows</td>
+</tr>
+<tr>
+<td style="text-align:left">滑动时间窗</td>
+<td style="text-align:left">EventTime</td>
+<td style="text-align:left">SlidingEventTimeWindows</td>
+</tr>
+</tbody>
+</table>
+<p>我们以一个<code>TumblingProcessingTimeWindows</code>和一个<code>SlidingEventTimeWindows</code>为例，讨论它的实现原理。</p>
+<p><strong>TumblingProcessingTimeWindows</strong><br><code>TumblingProcessingTimeWindows</code>基于处理时间的滚动时间窗口分配器，它是一个WindowAssigner。Flink提供两个接口初始化<code>TumblingProcessingTimeWindows</code><br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> TumblingProcessingTimeWindows <span class="title">of</span><span class="params">(Time size)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> TumblingProcessingTimeWindows(size.toMilliseconds(), <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> TumblingProcessingTimeWindows <span class="title">of</span><span class="params">(Time size, Time offset)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> TumblingProcessingTimeWindows(size.toMilliseconds(), offset.toMilliseconds());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>不管使用哪种方式初始化<code>TumblingProcessingTimeWindows</code>，最终都会调用同一个构造方法初始化，构造方法初始化size和offset两个属性。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/** TumblingProcessingTimeWindows构造器 */</span></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="title">TumblingProcessingTimeWindows</span><span class="params">(<span class="keyword">long</span> size, <span class="keyword">long</span> offset)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (offset &lt; <span class="number">0</span> || offset &gt;= size) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> IllegalArgumentException();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">this</span>.size = size;</span><br><span class="line">    <span class="keyword">this</span>.offset = offset;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>TumblingProcessingTimeWindows</code>是一个WindowAssigner，所以它实现了<code>assignWindows</code>方法来为流入的数据分配窗口。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> Collection&lt;TimeWindow&gt; <span class="title">assignWindows</span><span class="params">(Object element, <span class="keyword">long</span> timestamp, WindowAssignerContext context)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="keyword">long</span> now = context.getCurrentProcessingTime();</span><br><span class="line">    <span class="keyword">long</span> start = TimeWindow.getWindowStartWithOffset(now, offset, size);</span><br><span class="line">    <span class="keyword">return</span> Collections.singletonList(<span class="keyword">new</span> TimeWindow(start, start + size));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<ol>
+<li>第一步<code>assignWindows</code>首先获得系统当前时间戳，<code>context.getCurrentProcessingTime();</code>最终实现实际是调用<code>System.currentTimeMillis()</code>。</li>
+<li>第二步执行<code>TimeWindow.getWindowStartWithOffset(now, offset, size);</code>这个方法根据当前时间、偏移量、设置的间隔时间最终计算窗口起始时间。</li>
+<li>第三步根据起始时间和结束时间创建一个新的窗口<code>new TimeWindow(start, start + size)</code>并返回。</li>
+</ol>
+<p>比如，希望每10秒处理一次窗口数据<code>keyedStream.timeWindow(Time.seconds(10))</code>。当数据源源不断的流入Window Operator时，它会按10秒切割一个时间窗。<br>我们假设数据在2019年1月1日 12:00:07到达，那么窗口以下面方式切割(<code>请注意，窗口是左闭右开</code>)。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Window[2019年1月1日 12:00:00, 2019年1月1日 12:00:10)</span><br></pre></td></tr></table></figure></p>
+<p>如果在2019年1月1日 12:10:09又一条数据到达,窗口是这样的<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Window[2019年1月1日 12:10:00, 2019年1月1日 12:10:10)</span><br></pre></td></tr></table></figure></p>
+<p>如果我们希望从第15秒开始，每过1分钟计算一次窗口数据，这种场景需要用到offset。基于处理时间的滚动窗口可以这样写<br><code>keyedStream.window(TumblingProcessingTimeWindows.of(Time.minutes(1), Time.seconds(15)))</code><br>我们假设数据从2019年1月1日 12:00:14到达，那么窗口以下面方式切割<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Window[2019年1月1日 11:59:15, 2019年1月1日 12:00:15)</span><br></pre></td></tr></table></figure></p>
+<p>如果在2019年1月1日 12:00:16又一数据到达，那么窗口以下面方式切割<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Window[2019年1月1日 12:00:15, 2019年1月1日 12:01:15)</span><br></pre></td></tr></table></figure></p>
+<p><code>TumblingProcessingTimeWindows.assignWindows</code>方法每次都会返回一个新的窗口，也就是说窗口是不重叠的。但因为TimeWindow实现了<code>equals</code>方法，所以通过计算后start, start + size相同的数据，在逻辑上是同一个窗口。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">boolean</span> <span class="title">equals</span><span class="params">(Object o)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="keyword">this</span> == o) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (o == <span class="keyword">null</span> || getClass() != o.getClass()) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    TimeWindow window = (TimeWindow) o;</span><br><span class="line">    <span class="keyword">return</span> end == window.end &amp;&amp; start == window.start;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p><strong>SlidingEventTimeWindows</strong><br><code>SlidingEventTimeWindows</code>基于事件时间的滑动时间窗口分配器,它是一个WindowAssigner。Flink提供两个接口初始化<code>SlidingEventTimeWindows</code><br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> SlidingEventTimeWindows <span class="title">of</span><span class="params">(Time size, Time slide)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> SlidingEventTimeWindows(size.toMilliseconds(), slide.toMilliseconds(), <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> SlidingEventTimeWindows <span class="title">of</span><span class="params">(Time size, Time slide, Time offset)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> SlidingEventTimeWindows(size.toMilliseconds(), slide.toMilliseconds(),offset.toMilliseconds() % slide.toMilliseconds());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>同样，不管使用哪种方式初始化<code>SlidingEventTimeWindows</code>，最终都会调用同一个构造方法初始化，构造方法初始化三个属性size、slide和offset。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">protected</span> <span class="title">SlidingEventTimeWindows</span><span class="params">(<span class="keyword">long</span> size, <span class="keyword">long</span> slide, <span class="keyword">long</span> offset)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (offset &lt; <span class="number">0</span> || offset &gt;= slide || size &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> IllegalArgumentException();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">this</span>.size = size;</span><br><span class="line">    <span class="keyword">this</span>.slide = slide;</span><br><span class="line">    <span class="keyword">this</span>.offset = offset;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p><code>SlidingEventTimeWindows</code>是一个WindowAssigner，所以它实现了<code>assignWindows</code>方法来为流入的数据分配窗口。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> Collection&lt;TimeWindow&gt; <span class="title">assignWindows</span><span class="params">(Object element, <span class="keyword">long</span> timestamp, WindowAssignerContext context)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (timestamp &gt; Long.MIN_VALUE) &#123;</span><br><span class="line">        List&lt;TimeWindow&gt; windows = <span class="keyword">new</span> ArrayList&lt;&gt;((<span class="keyword">int</span>) (size / slide));</span><br><span class="line">        <span class="keyword">long</span> lastStart = TimeWindow.getWindowStartWithOffset(timestamp, offset, slide);</span><br><span class="line">        <span class="keyword">for</span> (<span class="keyword">long</span> start = lastStart; start &gt; timestamp - size;start -= slide) &#123;</span><br><span class="line">            windows.add(<span class="keyword">new</span> TimeWindow(start, start + size));</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> windows;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> RuntimeException();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>与基于处理时间的WindowAssigner不同，基于事件时间的WindowAssigner不依赖于系统时间，而是依赖于数据本身的事件时间。在<code>assignWindows</code>方法中第二个参数<code>timestamp</code>就是数据的事件时间。</p>
+<ol>
+<li>第一步<code>assignWindows</code>方法会先初始化一个<code>List&lt;TimeWindow&gt;</code>，大小是<code>size / slide</code>。这个集合用来存放时间窗对象并作为返回结果。</li>
+<li>第二步执行<code>TimeWindow.getWindowStartWithOffset(timestamp, offset, slide);</code>计算窗口起始时间。</li>
+<li>第三步根据事件时间、滑动大小和窗口大小计算并生成数据能落入的窗口<code>new TimeWindow(start, start + size)</code>，最后加入到List集合并返回。「因为是滑动窗口一个数据可能落在多个窗口」</li>
+</ol>
+<p>比如，希望每5秒滑动一次处理最近10秒窗口数据<code>keyedStream.timeWindow(Time.seconds(10), Time.seconds(5))</code>。当数据源源不断流入Window Operator时，会按10秒切割一个时间窗，5秒滚动一次。<br>我们假设一条付费事件数据付费时间是2019年1月1日 17:11:24，那么这个付费数据将落到下面两个窗口中(<code>请注意，窗口是左闭右开</code>)。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Window[2019年1月1日 17:11:20, 2019年1月1日 17:11:30)</span><br><span class="line">Window[2019年1月1日 17:11:15, 2019年1月1日 17:11:25)</span><br></pre></td></tr></table></figure></p>
+<h4 id="Time-Window-Trigger"><a href="#Time-Window-Trigger" class="headerlink" title="Time Window Trigger"></a>Time Window Trigger</h4><p>Flink API在创建Time Window时没有使用<code>windowStream.trigger</code>方法覆盖默认Trigger。<br>TumblingProcessingTimeWindows使用ProcessingTimeTrigger作为默认Trigger。<code>ProcessingTimeTrigger</code>在<code>onElement</code>的策略是永远返回CONTINUE，也就是说它不会因为数据的流入触发窗口计算和清理。在返回CONTINUE前调用<code>registerProcessingTimeTimer(window.maxTimestamp());</code>注册一个定时器，并且逻辑相同窗口只注册一次，事件所在窗口的结束时间与系统当前时间差决定了定时器多久后触发。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ScheduledThreadPoolExecutor.schedule(<span class="keyword">new</span> TriggerTask(), timeEndTime - systemTime, TimeUnit.MILLISECONDS);</span><br></pre></td></tr></table></figure></p>
+<p>定时器一旦触发会回调Trigger的<code>onProcessingTime</code>方法。<code>ProcessingTimeTrigger</code>中实现的<code>onProcessingTime</code>直接返回FIRE。也就是说系统时间大于等于窗口最大时间时，通过回调方式触发窗口计算。但因为返回的是FIRE只是触发了窗口计算,并没有做清除。<br><!--
+疑问：返回FIRE，不会执行清理操作，在Window算子中当满足触发的时间戳等于window结束时间才做清理操作。
+--></p>
+<p>SlidingEventTimeWindows使用EventTimeTrigger作为默认Trigger。事件时间、摄入时间与处理时间在时间概念上有一点不同，处理时间处理依赖的是系统时钟生成的时间，而事件时间和摄入时间依赖的是<code>Watermark(水印)</code>。我们现在只需要知道水印是一个时间戳，可以由Flink以固定的时间间隔发出，或由开发人员根据业务自定义。水印用来衡量处理程序的时间进展。</p>
+<p><code>EventTimeTrigger</code>的<code>onElement</code>方法中比较窗口的结束时间与当前水印时间，如果窗口结束时间已小于或等于当前水印时间立即返回FIRE。<br>「个人理解这是由于时间差问题导致的窗口时间小于或等于当前水印时间，正常情况下如果窗口结束时间已经小于水印时间则数据不会被处理，也不会调用onElement」</p>
+<p>如果窗口结束时间大于当前水印时间，调用<code>registerEventTimeTimer(window.maxTimestamp())</code>注册一个事件后直接返回CONTINUE。EventTime注册事件没有使用Scheduled，因为它依赖水印时间。所以在注册时将逻辑相同的时间窗封装为一个特定对象添加到一个排重队列，并且相同窗口对象只添加一次。</p>
+<p>上面提到水印是以固定时间间隔发出或由开发人员自定义的，Flink处理水印时从排重队列头获取一个时间窗对象与水印时间戳比较，一旦窗口时间小于或等于水印时间回调trigger的<code>onEventTime</code>。<br>EventTimeTrigger中<code>onEventTime</code>并不是直接返回FIRE，而是判断窗口结束时间与获取的时间窗对象时间做比较，仅当时间相同时才返回FIRE，其他情况返回CONTINUE。「个人理解这么做是为了满足滑动窗口的需求，因为滑动窗口在排重队列中存在两个不同的对象，而两个窗口对象的时间可能同时满足回调条件」</p>
+<h4 id="Time-Window-Evictor"><a href="#Time-Window-Evictor" class="headerlink" title="Time Window Evictor"></a>Time Window Evictor</h4><p>Flink内置Time Window实现没有使用Evictor。</p>
+<h3 id="Session-Window-API"><a href="#Session-Window-API" class="headerlink" title="Session Window API"></a>Session Window API</h3><p><code>KeyedStream</code>中没有为Session Window提供类似Count Windown和Time Window一样能直接使用的API。我们可以使用<code>window(WindowAssigner assigner)</code>创建Session Window。<br>比如创建一个基于处理时间，时间间隔为2秒的SessionWindow可以这样实现<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">keyedStream.window(ProcessingTimeSessionWindows.withGap(Time.seconds(<span class="number">2</span>)))</span><br></pre></td></tr></table></figure></p>
+<h4 id="Assigner"><a href="#Assigner" class="headerlink" title="Assigner"></a>Assigner</h4><p>Flink内置的Session Window Assigner全部继承MergingWindowAssigner。下图展示了MergingWindowAssigner的上下结构关系。</p>
+<p><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/MergingWindowClass.png" alt="MergingWindowAssigner"></p>
+<p>MergingWindowAssigner继承了WindowAssigner，所以它具备分配时间窗的能力。MergingWindowAssigner自身是一个可以merge的Window，它的内部定义了一个mergeWindows抽象方法以及merge时的回调定义。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">abstract</span> <span class="keyword">void</span> <span class="title">mergeWindows</span><span class="params">(Collection&lt;W&gt; windows, MergeCallback&lt;W&gt; callback)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">MergeCallback</span>&lt;<span class="title">W</span>&gt; </span>&#123;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">merge</span><span class="params">(Collection&lt;W&gt; toBeMerged, W mergeResult)</span></span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>我们以<code>ProcessingTimeSessionWindows</code>为例介绍Session Window。<code>ProcessingTimeSessionWindows</code>提供了一个静态方法用来初始化<code>ProcessingTimeSessionWindows</code><br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> ProcessingTimeSessionWindows <span class="title">withGap</span><span class="params">(Time size)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> ProcessingTimeSessionWindows(size.toMilliseconds());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>静态方法withGap接收一个时间参数，用来描述时间间隔。并调用构造方法将时间间隔赋值给sessionTimeout属性。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">protected</span> <span class="title">ProcessingTimeSessionWindows</span><span class="params">(<span class="keyword">long</span> sessionTimeout)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (sessionTimeout &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> IllegalArgumentException();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">this</span>.sessionTimeout = sessionTimeout;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p><code>ProcessingTimeSessionWindows</code>是一个WindowAssigner，所以它实现了数据分配窗口的能力。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> Collection&lt;TimeWindow&gt; <span class="title">assignWindows</span><span class="params">(Object element, <span class="keyword">long</span> timestamp, WindowAssignerContext context)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">long</span> currentProcessingTime = context.getCurrentProcessingTime();</span><br><span class="line">    <span class="keyword">return</span> Collections.singletonList(<span class="keyword">new</span> TimeWindow(currentProcessingTime, currentProcessingTime + sessionTimeout));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p><code>ProcessingTimeSessionWindows</code>会为每个数据都分配一个新的时间窗口。由于是基于处理时间，所以窗口的起始时间就是系统当前时间，而结束时间是系统当前时间+设置的时间间隔。通过起始时间和结束时间确定了窗口的时间范围。</p>
+<h4 id="Trigger-1"><a href="#Trigger-1" class="headerlink" title="Trigger"></a>Trigger</h4><p>如果在代码中我们不手动覆盖Trigger，那么将使用<code>ProcessingTimeSessionWindows</code>默认的<code>ProcessingTimeTrigger</code><br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> Trigger&lt;Object, TimeWindow&gt; <span class="title">getDefaultTrigger</span><span class="params">(StreamExecutionEnvironment env)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> ProcessingTimeTrigger.create();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p><code>ProcessingTimeTrigger</code>在基于处理时间的Time Window介绍过，它通过注册、onProcessorTime回调方式触发窗口计算，这里不再讨论。</p>
+<h4 id="Evictor-1"><a href="#Evictor-1" class="headerlink" title="Evictor"></a>Evictor</h4><p>Session Window不由Flink API控制生成，完全取决于客户端如何创建。在创建Window实例后可以通过调用<code>evictor</code>方法并传入Flink内置的Evictor或自己实现的Evictor。</p>
+<h4 id="Merging"><a href="#Merging" class="headerlink" title="Merging"></a>Merging</h4><p>Session Window继承<code>MergingWindowAssigner</code>，<code>MergingWindowAssigner</code>继承<code>WindowAssigner</code>。所以本质上Session Window还是一个<code>WindowAssigner</code>，但因继承了<code>MergingWindowAssigner</code>使得自己具有了一个「可以合并时间窗口」的特性。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">mergeWindows</span><span class="params">(Collection&lt;TimeWindow&gt; windows, MergeCallback&lt;TimeWindow&gt; c)</span> </span>&#123;</span><br><span class="line">    TimeWindow.mergeWindows(windows, c);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>Session Window处理流程大致是这样</p>
+<ol>
+<li>使用WindowAssigner为流入的数据分配窗口</li>
+<li>Merge窗口，将存在交集的窗口合并，取最小时间和最大时间作为窗口的起始和关闭。假设有两条数据流入系统后，通过WindowAssigner分配的窗口分别是<br> 数据A：Window[2019年1月1日 10:00:00, 2019年1月1日 10:20:00)<br> 数据B：Window[2019年1月1日 10:05:00, 2019年1月1日 10:25:00)<br> 经过合并后，使用数据A的起始时间和数据B的结束时间作为节点，窗口时间变为了<br> [2019年1月1日 10:00:00, 2019年1月1日 10:25:00)</li>
+<li>执行<code>Trigger.onMerge</code>，为合并后的窗口注册回调事件</li>
+<li>移除其他注册的回调事件</li>
+<li>Window State合并</li>
+<li>开始处理数据，执行<code>Trigger.onElement</code><br>…后续与其他Window处理一样</li>
+</ol>
+<p>可以看到，Session Window与Time Window类似，通过注册回调方式触发数据处理。但不同的是Session Window通过不断为新流入的数据做Merge操作来改变回调时间点，以实现Session Window的特性。</p>
+<h2 id="总结-1"><a href="#总结-1" class="headerlink" title="总结"></a>总结</h2><ul>
+<li>Window Operator创建<br>Window处理流程由<code>WindowOperator</code>或<code>EvictingWindowOperator</code>控制，他们的关系及区别体现在以下几点</li>
+</ul>
+<ol>
+<li><code>EvictingWindowOperator</code>继承自<code>WindowOperator</code>，所以<code>EvictingWindowOperator</code>是一个<code>WindowOperator</code>，具备<code>WindowOperator</code>的特性。</li>
+<li>清理窗口数据的机制不同，<code>EvictingWindowOperator</code>内部依赖Evictor组件，而<code>WindowOperator</code>内部不使用Evictor。这也导致它们两个Operator初始化时的差异<br><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/operator_create.jpg" alt="初始化流程"></li>
+</ol>
+<ul>
+<li><p>MergeWindow特殊处理<br>可以合并窗口的<code>WindowAssigner</code>会继承<code>MergingWindowAssigner</code>。当数据流入Window Operator后，根据<code>WindowAssigner</code>是否为一个<code>MergingWindowAssigner</code>决定了处理流程。<br><img src="https://tianshushi.github.io/2019/02/17/Flink-Window/processElement.jpg" alt="processElement"></p>
+</li>
+<li><p>窗口生命周期<br>Flink内置的窗口生命周期是不同的，下表描述了他们直接的差异</p>
+</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">窗口类型</th>
+<th style="text-align:left">窗口周期</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Count Window</td>
+<td style="text-align:left">依赖事件数量，当事件数量达不到设定上限时永远不会触发。浪费内存、数据处理延时</td>
+</tr>
+<tr>
+<td style="text-align:left">Session Window</td>
+<td style="text-align:left">依赖了会话时间间隔，超过设置的时间时窗口结束，触发计算</td>
+</tr>
+<tr>
+<td style="text-align:left">Time Window</td>
+<td style="text-align:left">时间是一直在变的，所以时间窗口总会触发</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><p>侧路输出<br>当Flink应用采用EventTime作为时间机制时，Window不会处理延迟到达的数据，也就是说不处理在水印时间戳之前的数据。Flink提供了一个SideOutput机制可以处理这些延迟到达的数据。通过<code>WindowedStream.sideOutputLateData</code>方法实现侧路输出。</p>
+</li>
+<li><p>自定义窗口<br>Flink内置窗口利用WindowAssigner、Trigger、Evictor3个组件的相互组合实现了多种非常强大的功能，我们也可以尝试通过组件实现一个自定义的Window。由于篇幅原因，自定义窗口下篇再细聊。</p>
+</li>
+</ul>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+      
+    
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/Flink/" rel="tag"># Flink</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2017/01/02/SLF4J-MDC/" rel="next" title="SLF4J中的MDC">
+                <i class="fa fa-chevron-left"></i> SLF4J中的MDC
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2019/02/27/ZooKeeper入门/" rel="prev" title="ZooKeeper入门">
+                ZooKeeper入门 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+  </div>
+
+
+          </div>
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">说天书</p>
+              <div class="site-description motion-element" itemprop="description"></div>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/">
+                
+                    <span class="site-state-item-count">7</span>
+                    <span class="site-state-item-name">日志</span>
+                  </a>
+                </div>
+              
+
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">5</span>
+                    <span class="site-state-item-name">标签</span>
+                  
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+
+          
+
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </div>
+
+      
+      <!--noindex-->
+        <div class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+            
+            
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Flink内置Window"><span class="nav-number">1.</span> <span class="nav-text">Flink内置Window</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Count-Window"><span class="nav-number">1.1.</span> <span class="nav-text">Count Window</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Session-Window"><span class="nav-number">1.2.</span> <span class="nav-text">Session Window</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Time-Window"><span class="nav-number">1.3.</span> <span class="nav-text">Time Window</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Flink-Window组件"><span class="nav-number">2.</span> <span class="nav-text">Flink Window组件</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#WindowAssigner"><span class="nav-number">2.1.</span> <span class="nav-text">WindowAssigner</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Flink内置WindowAssigner"><span class="nav-number">2.1.1.</span> <span class="nav-text">Flink内置WindowAssigner</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Trigger"><span class="nav-number">2.2.</span> <span class="nav-text">Trigger</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#TriggerResult返回类型及说明"><span class="nav-number">2.2.1.</span> <span class="nav-text">TriggerResult返回类型及说明</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Flink内置Trigger"><span class="nav-number">2.2.2.</span> <span class="nav-text">Flink内置Trigger</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Evictor"><span class="nav-number">2.3.</span> <span class="nav-text">Evictor</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Flink内置Evictor"><span class="nav-number">2.3.1.</span> <span class="nav-text">Flink内置Evictor</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#实现原理"><span class="nav-number">3.</span> <span class="nav-text">实现原理</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Count-Window-API"><span class="nav-number">3.1.</span> <span class="nav-text">Count Window API</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Count-Window-Assigner"><span class="nav-number">3.1.1.</span> <span class="nav-text">Count Window Assigner</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Count-Window-Trigger"><span class="nav-number">3.1.2.</span> <span class="nav-text">Count Window Trigger</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Count-Window-Evictor"><span class="nav-number">3.1.3.</span> <span class="nav-text">Count Window Evictor</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#总结"><span class="nav-number">3.1.4.</span> <span class="nav-text">总结</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Time-Window-API"><span class="nav-number">3.2.</span> <span class="nav-text">Time Window API</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Time-Window-Assigner"><span class="nav-number">3.2.1.</span> <span class="nav-text">Time Window Assigner</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Time-Window-Trigger"><span class="nav-number">3.2.2.</span> <span class="nav-text">Time Window Trigger</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Time-Window-Evictor"><span class="nav-number">3.2.3.</span> <span class="nav-text">Time Window Evictor</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Session-Window-API"><span class="nav-number">3.3.</span> <span class="nav-text">Session Window API</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Assigner"><span class="nav-number">3.3.1.</span> <span class="nav-text">Assigner</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Trigger-1"><span class="nav-number">3.3.2.</span> <span class="nav-text">Trigger</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Evictor-1"><span class="nav-number">3.3.3.</span> <span class="nav-text">Evictor</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Merging"><span class="nav-number">3.3.4.</span> <span class="nav-text">Merging</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#总结-1"><span class="nav-number">4.</span> <span class="nav-text">总结</span></a></li></ol></div>
+            
+
+          </div>
+        </div>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+  
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love" id="animate">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">说天书</span>
+
+  
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a href="https://hexo.io" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v3.8.0</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 – <a href="https://theme-next.org" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.0.1</div>
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="post-meta-item-icon">
+      <i class="fa fa-user"></i>
+    </span>
+    <span class="site-uv" title="总访客量">
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+    </span>
+  
+
+  
+    <span class="post-meta-divider">|</span>
+  
+
+  
+    <span class="post-meta-item-icon">
+      <i class="fa fa-eye"></i>
+    </span>
+    <span class="site-pv" title="总访问量">
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+    
+
+    
+  </div>
+
+  
+
+<script>
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script src="/lib/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+
+  
+
+
+  <script src="/js/src/utils.js?v=7.0.1"></script>
+
+  <script src="/js/src/motion.js?v=7.0.1"></script>
+
+
+
+  
+  
+
+
+  <script src="/js/src/affix.js?v=7.0.1"></script>
+
+  <script src="/js/src/schemes/pisces.js?v=7.0.1"></script>
+
+
+
+
+  
+  <script src="/js/src/scrollspy.js?v=7.0.1"></script>
+<script src="/js/src/post-details.js?v=7.0.1"></script>
+
+
+
+  
+
+
+  <script src="/js/src/next-boot.js?v=7.0.1"></script>
+
+
+  
+
+  
+
+  
+
+  
+
+
+  
+
+
+  
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

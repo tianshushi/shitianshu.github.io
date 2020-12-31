@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+<html class="theme-next gemini use-motion" lang="zh-CN">
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2">
+
+<link rel="stylesheet" href="/css/main.css?v=7.0.1">
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=7.0.1">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=7.0.1">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=7.0.1">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=7.0.1" color="#222">
+
+
+
+
+
+
+
+<script id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Gemini',
+    version: '7.0.1',
+    sidebar: {"position":"left","display":"post","offset":12,"onmobile":false,"dimmer":false},
+    back2top: true,
+    back2top_sidebar: false,
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="Flink Kafa Connector是Flink内置的Kafka连接器，它包含了从Kafka Topic读入数据的Flink Kafka Consumer以及向Kafka Topic写出数据的Flink Kafka Producer，除此之外Flink Kafa Connector基于Flink Checkpoint机制提供了完善的容错能力。本文从Flink Kafka Connector的基">
+<meta name="keywords" content="Flink">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Flink Kafka Connector与Exactly Once剖析">
+<meta property="og:url" content="http://yoursite.com/2019/04/24/Flink-Kafka-Connector/index.html">
+<meta property="og:site_name" content="天书说">
+<meta property="og:description" content="Flink Kafa Connector是Flink内置的Kafka连接器，它包含了从Kafka Topic读入数据的Flink Kafka Consumer以及向Kafka Topic写出数据的Flink Kafka Producer，除此之外Flink Kafa Connector基于Flink Checkpoint机制提供了完善的容错能力。本文从Flink Kafka Connector的基">
+<meta property="og:locale" content="zh-CN">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaFetcher未消费阶段.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaFetcher开始消费阶段.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer快照开始.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer快照结束.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer恢复-step1.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer恢复-step2.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer恢复-step3.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer运行时第一步写入Kafka.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer运行时第二步快照开始.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer运行时第三步快照提交.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer崩溃描述.jpg">
+<meta property="og:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer恢复阶段状态初始化.jpg">
+<meta property="og:updated_time" content="2019-04-28T14:40:37.000Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Flink Kafka Connector与Exactly Once剖析">
+<meta name="twitter:description" content="Flink Kafa Connector是Flink内置的Kafka连接器，它包含了从Kafka Topic读入数据的Flink Kafka Consumer以及向Kafka Topic写出数据的Flink Kafka Producer，除此之外Flink Kafa Connector基于Flink Checkpoint机制提供了完善的容错能力。本文从Flink Kafka Connector的基">
+<meta name="twitter:image" content="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaFetcher未消费阶段.jpg">
+
+
+
+
+
+  
+  
+  <link rel="canonical" href="http://yoursite.com/2019/04/24/Flink-Kafka-Connector/">
+
+
+
+<script id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>Flink Kafka Connector与Exactly Once剖析 | 天书说</title>
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .motion-element,
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-title { opacity: initial; }
+
+  .use-motion .logo,
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-CN">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">天书说</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+    
+    
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="切换导航栏">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+        
+          
+          <li class="menu-item menu-item-home">
+
+    
+    
+    
+      
+    
+
+    
+
+    <a href="/" rel="section"><i class="menu-item-icon fa fa-fw fa-home"></i> <br>首页</a>
+
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-archives">
+
+    
+    
+    
+      
+    
+
+    
+
+    <a href="/archives/" rel="section"><i class="menu-item-icon fa fa-fw fa-archive"></i> <br>归档</a>
+
+  </li>
+
+      
+      
+    </ul>
+  
+
+  
+
+  
+</nav>
+
+
+
+  
+
+
+
+</div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+            
+
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2019/04/24/Flink-Kafka-Connector/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="说天书">
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="天书说">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Flink Kafka Connector与Exactly Once剖析
+
+              
+            
+          </h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+
+            
+            
+            
+
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+
+              
+                
+              
+
+              <time title="创建时间：2019-04-24 01:15:28" itemprop="dateCreated datePublished" datetime="2019-04-24T01:15:28+08:00">2019-04-24</time>
+            
+
+            
+              
+
+              
+                
+                <span class="post-meta-divider">|</span>
+                
+
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                
+                  <span class="post-meta-item-text">更新于</span>
+                
+                <time title="修改时间：2019-04-28 22:40:37" itemprop="dateModified" datetime="2019-04-28T22:40:37+08:00">2019-04-28</time>
+              
+            
+          </span>
+
+          
+
+          
+            
+            
+          
+
+          
+          
+
+          
+            <span class="post-meta-divider">|</span>
+            <span class="post-meta-item-icon">
+            <i class="fa fa-eye"></i>
+             阅读次数： 
+            <span class="busuanzi-value" id="busuanzi_value_page_pv"></span>
+            </span>
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>Flink Kafa Connector是Flink内置的Kafka连接器，它包含了从Kafka Topic读入数据的<code>Flink Kafka Consumer</code>以及向Kafka Topic写出数据的<code>Flink Kafka Producer</code>，除此之外Flink Kafa Connector基于Flink Checkpoint机制提供了完善的容错能力。本文从Flink Kafka Connector的基本使用到Kafka在Flink中端到端的容错原理展开讨论。</p>
+<a id="more"></a>
+<h2 id="Flink-Kafka的使用"><a href="#Flink-Kafka的使用" class="headerlink" title="Flink Kafka的使用"></a>Flink Kafka的使用</h2><p>在Flink中使用Kafka Connector时需要依赖Kafka的版本，Flink针对不同的Kafka版本提供了对应的Connector实现。</p>
+<h3 id="版本依赖"><a href="#版本依赖" class="headerlink" title="版本依赖"></a>版本依赖</h3><p>既然Flink对不同版本的Kafka有不同实现，在使用时需要注意区分，根据使用环境引入正确的依赖关系。<br><figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dependency</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">groupId</span>&gt;</span>org.apache.flink<span class="tag">&lt;/<span class="name">groupId</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">artifactId</span>&gt;</span>$&#123;flink_kafka_connector_version&#125;<span class="tag">&lt;/<span class="name">artifactId</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">version</span>&gt;</span>$&#123;flink_version&#125;<span class="tag">&lt;/<span class="name">version</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dependency</span>&gt;</span></span><br></pre></td></tr></table></figure></p>
+<p>在上面的依赖配置中${flink_version}指使用Flink的版本，<code>${flink_connector_kafka_version}</code>指依赖的Kafka connector版本对应的artifactId。下表描述了截止目前为止Kafka服务版本与Flink Connector之间的对应关系。<br><a href="https://ci.apache.org/projects/flink/flink-docs-release-1.7/dev/connectors/kafka.html" target="_blank" rel="noopener">Flink官网内容Apache Kafka Connector</a>中也有详细的说明。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Maven artifactId</th>
+<th style="text-align:left">Kafka消费处理类</th>
+<th style="text-align:left">Kafka生产处理类</th>
+<th style="text-align:left">对应Kafka版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">flink-connector-kafka-0.8_2.11</td>
+<td style="text-align:left">FlinkKafkaConsumer08</td>
+<td style="text-align:left">FlinkKafkaProducer08</td>
+<td style="text-align:left">0.8.x</td>
+</tr>
+<tr>
+<td style="text-align:left">flink-connector-kafka-0.9_2.11</td>
+<td style="text-align:left">FlinkKafkaConsumer09</td>
+<td style="text-align:left">FlinkKafkaProducer09</td>
+<td style="text-align:left">0.9.x</td>
+</tr>
+<tr>
+<td style="text-align:left">flink-connector-kafka-0.10_2.11</td>
+<td style="text-align:left">FlinkKafkaConsumer010</td>
+<td style="text-align:left">FlinkKafkaProducer010</td>
+<td style="text-align:left">0.10.x</td>
+</tr>
+<tr>
+<td style="text-align:left">flink-connector-kafka-0.11_2.11</td>
+<td style="text-align:left">FlinkKafkaConsumer011</td>
+<td style="text-align:left">FlinkKafkaProducer011</td>
+<td style="text-align:left">0.11.x</td>
+</tr>
+<tr>
+<td style="text-align:left">flink-connector-kafka_2.11</td>
+<td style="text-align:left">FlinkKafkaConsumer</td>
+<td style="text-align:left">FlinkKafkaProducer</td>
+<td style="text-align:left">&gt;= 1.0.0</td>
+</tr>
+</tbody>
+</table>
+<p>从Flink 1.7版本开始为Kafka 1.0.0及以上版本提供了全新的的Kafka Connector支持，如果使用的Kafka版本在1.0.0及以上可以忽略因Kafka版本差异带来的依赖变化。</p>
+<h3 id="基本使用"><a href="#基本使用" class="headerlink" title="基本使用"></a>基本使用</h3><p>明确了使用的Kafka版本后就可以编写一个基于Flink Kafka读/写的应用程序「本文讨论内容全部基于Flink 1.7版本和Kafka 1.1.0版本」。根据上面描述的对应关系在工程中添加Kafka Connector依赖<br><figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dependency</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">groupId</span>&gt;</span>org.apache.flink<span class="tag">&lt;/<span class="name">groupId</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">artifactId</span>&gt;</span>flink-connector-kafka_2.11<span class="tag">&lt;/<span class="name">artifactId</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">version</span>&gt;</span>1.7.0<span class="tag">&lt;/<span class="name">version</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dependency</span>&gt;</span></span><br></pre></td></tr></table></figure></p>
+<p>下面的代码片段是从Kafka Topic「flink_kafka_poc_input」中消费数据，再写入Kafka Topic「flink_kafka_poc_output」的简单示例。示例中除了读/写Kafka Topic外，没有做其他的逻辑处理。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">main</span><span class="params">(String[] args)</span> </span>&#123;</span><br><span class="line">  StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();</span><br><span class="line">    </span><br><span class="line">  <span class="comment">/** 初始化Consumer配置 */</span></span><br><span class="line">  Properties consumerConfig = <span class="keyword">new</span> Properties();</span><br><span class="line">  consumerConfig.setProperty(<span class="string">"bootstrap.servers"</span>, <span class="string">"127.0.0.1:9091"</span>);</span><br><span class="line">  consumerConfig.setProperty(<span class="string">"group.id"</span>, <span class="string">"flink_poc_k110_consumer"</span>);</span><br><span class="line">  </span><br><span class="line">  <span class="comment">/** 初始化Kafka Consumer */</span></span><br><span class="line">  FlinkKafkaConsumer&lt;String&gt; flinkKafkaConsumer = </span><br><span class="line">    <span class="keyword">new</span> FlinkKafkaConsumer&lt;String&gt;(</span><br><span class="line">      <span class="string">"flink_kafka_poc_input"</span>, </span><br><span class="line">      <span class="keyword">new</span> SimpleStringSchema(), </span><br><span class="line">      consumerConfig</span><br><span class="line">    );</span><br><span class="line">  <span class="comment">/** 将Kafka Consumer加入到流处理 */</span></span><br><span class="line">  DataStream&lt;String&gt; stream = env.addSource(flinkKafkaConsumer);</span><br><span class="line"></span><br><span class="line">  <span class="comment">/** 初始化Producer配置 */</span></span><br><span class="line">  Properties producerConfig = <span class="keyword">new</span> Properties();</span><br><span class="line">  producerConfig.setProperty(<span class="string">"bootstrap.servers"</span>, <span class="string">"127.0.0.1:9091"</span>);</span><br><span class="line">  </span><br><span class="line">  <span class="comment">/** 初始化Kafka Producer */</span></span><br><span class="line">  FlinkKafkaProducer&lt;String&gt; myProducer = </span><br><span class="line">    <span class="keyword">new</span> FlinkKafkaProducer&lt;String&gt;(</span><br><span class="line">      <span class="string">"flink_kafka_poc_output"</span>, </span><br><span class="line">      <span class="keyword">new</span> MapSerialization(), </span><br><span class="line">      producerConfig</span><br><span class="line">    );</span><br><span class="line">  <span class="comment">/** 将Kafka Producer加入到流处理 */</span></span><br><span class="line">  stream.addSink(myProducer);</span><br><span class="line">  </span><br><span class="line">  <span class="comment">/** 执行 */</span></span><br><span class="line">  env.execute();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">MapSerialization</span> <span class="keyword">implements</span> <span class="title">SerializationSchema</span>&lt;<span class="title">String</span>&gt; </span>&#123;</span><br><span class="line">  <span class="keyword">public</span> <span class="keyword">byte</span>[] serialize(String element) &#123;</span><br><span class="line">    <span class="keyword">return</span> element.getBytes();</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>Flink API使用起来确实非常简单，调用<code>addSource</code>方法和<code>addSink</code>方法就可以将初始化好的<code>FlinkKafkaConsumer</code>和<code>FlinkKafkaProducer</code>加入到流处理中。<code>execute</code>执行后，KafkaConsumer和KafkaProducer就可以开始正常工作了。</p>
+<h2 id="Flink-Kafka的容错"><a href="#Flink-Kafka的容错" class="headerlink" title="Flink Kafka的容错"></a>Flink Kafka的容错</h2><p>众所周知，Flink支持Exactly-once semantics。什么意思呢？翻译过来就是「恰好一次语义」。流处理系统中，数据源源不断的流入到系统、被处理、最后输出结果。我们都不希望系统因人为或外部因素产生任何意想不到的结果。对于Exactly-once语义达到的目的是指<code>即使系统被人为停止、因故障shutdown、无辜关机等任何因素停止运行状态时，对于系统中的每条数据不会被重复处理也不会少处理。</code></p>
+<h3 id="Flink-Exactly-once"><a href="#Flink-Exactly-once" class="headerlink" title="Flink Exactly-once"></a>Flink Exactly-once</h3><p>Flink宣称支持Exactly-once其针对的是Flink应用内部的数据流处理。但Flink应用内部要想处理数据首先要有数据流入到Flink应用，其次Flink应用对数据处理完毕后也理应对数据做后续的输出。在Flink中数据的流入称为Source，数据的后续输出称为Sink，对于Source和Sink完全依靠外部系统支撑（比如Kafka）。</p>
+<p>Flink自身是无法保证外部系统的Exactly-once语义。但这样一来其实并不能称为完整的Exactly-once，或者说Flink并不能保证端到端Exactly-once。而对于数据精准性要求极高的系统必须要保证端到端的Exactly-once，所谓端到端是指<code>Flink应用从Source一端开始到Sink一端结束，数据必经的起始和结束两个端点。</code></p>
+<p>那么如何实现端到端的Exactly-once呢？Flink应用所依赖的外部系统需要提供Exactly-once支撑，并结合Flink提供的Checkpoint机制和Two Phase Commit才能实现Flink端到端的Exactly-once。对于Source和Sink的容错保障，Flink官方给出了具体说明<a href="https://ci.apache.org/projects/flink/flink-docs-release-1.7/dev/connectors/guarantees.html" target="_blank" rel="noopener">Fault Tolerance Guarantees of Data Sources and Sinks</a></p>
+<h3 id="Flink-Checkpoint"><a href="#Flink-Checkpoint" class="headerlink" title="Flink Checkpoint"></a>Flink Checkpoint</h3><p>在讨论基于Kafka端到端的Exactly-once之前先简单了解一下Flink Checkpoint，详细内容在<a href="http://" target="_blank" rel="noopener">《Flink Checkpoint原理》</a>中有做讨论。Flink Checkpoint是Flink用来实现应用一致性快照的核心机制，当Flink因故障或其他原因重启后可以通过最后一次成功的Checkpoint将应用恢复到当时的状态。如果在应用中启用了Checkpoint，会由JobManager按指定时间间隔触发Checkpoint，Flink应用内所有带状态的Operator会处理每一轮Checkpoint生命周期内的几个状态。</p>
+<ul>
+<li><p>initializeState<br>由<code>CheckpointedFunction</code>接口定义。Task启动时获取应用中所有实现了<code>CheckpointedFunction</code>的Operator，并触发执行<code>initializeState</code>方法。在方法的实现中一般都是从状态后端将快照状态恢复。</p>
+</li>
+<li><p>snapshotState<br>由<code>CheckpointedFunction</code>接口定义。JobManager会定期发起Checkpoint，Task接收到Checkpoint后获取应用中所有实现了<code>CheckpointedFunction</code>的Operator并触发执行对应的<code>snapshotState</code>方法。<br>JobManager每发起一轮Checkpoint都会携带一个自增的checkpointId，这个checkpointId代表了快照的轮次。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">CheckpointedFunction</span> </span>&#123;</span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">snapshotState</span><span class="params">(FunctionSnapshotContext context)</span> <span class="keyword">throws</span> Exception</span>;</span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">initializeState</span><span class="params">(FunctionInitializationContext context)</span> <span class="keyword">throws</span> Exception</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>notifyCheckpointComplete<br>由<code>CheckpointListener</code>接口定义。当基于同一个轮次(checkpointId相同)的Checkpoint快照全部处理成功后获取应用中所有实现了<code>CheckpointListener</code>的Operator并触发执行<code>notifyCheckpointComplete</code>方法。触发<code>notifyCheckpointComplete</code>方法时携带的checkpointId参数用来告诉Operator哪一轮Checkpoint已经完成。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">CheckpointListener</span> </span>&#123;</span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">notifyCheckpointComplete</span><span class="params">(<span class="keyword">long</span> checkpointId)</span> <span class="keyword">throws</span> Exception</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="Flink-Kafka端到端Exactly-once"><a href="#Flink-Kafka端到端Exactly-once" class="headerlink" title="Flink Kafka端到端Exactly-once"></a>Flink Kafka端到端Exactly-once</h3><p>Kafka是非常收欢迎的分布式消息系统，在Flink中它可以作为Source，同时也可以作为Sink。Kafka 0.11.0及以上版本提供了对事务的支持，这让Flink应用搭载Kafka实现端到端的exactly-once成为了可能。下面我们就来深入了解提供了事务支持的Kafka是如何与Flink结合实现端到端exactly-once的。</p>
+<p>本文忽略了Barrier机制，所以示例和图中都以单线程为例。Barrier在<a href="http://" target="_blank" rel="noopener">《Flink Checkpoint原理》</a>有较多讨论。</p>
+<h4 id="Flink-Kafka-Consumer"><a href="#Flink-Kafka-Consumer" class="headerlink" title="Flink Kafka Consumer"></a>Flink Kafka Consumer</h4><p>Kafka自身提供了可重复消费消息的能力，Flink结合Kafka的这个特性以及自身Checkpoint机制，得以实现Flink Kafka Consumer的容错。<br>Flink Kafka Consumer是Flink应用从Kafka获取数据流消息的一个实现。除了数据流获取、数据发送下游算子这些基本功能外它还提供了完善的容错机制。这些特性依赖了其内部的一些组件以及内置的数据结构协同处理完成。这里，我们先简单了解这些组件和内置数据结构的职责，再结合Flink <strong><em>运行时</em></strong> 和 <strong><em>故障恢复时</em></strong> 两个不同的处理时机来看一看它们之间是如何协同工作的。</p>
+<ul>
+<li><p>Kafka Topic元数据<br>从Kafka消费数据的前提是需要知道消费哪个topic，这个topic有多少个partition。组件<code>AbstractPartitionDiscoverer</code>负责获得指定topic的元数据信息，并将获取到的topic元数据信息封装成<code>KafkaTopicPartition</code>集合。</p>
+</li>
+<li><p>KafkaTopicPartition<br>KafkaTopicPartition结构用于记录topic与partition的对应关系，内部定义了<code>String topic</code>和<code>int partition</code>两个主要属性。假设topic A有2个分区，通过组件<code>AbstractPartitionDiscoverer</code>处理后将得到由两个<code>KafkaTopicPartition</code>对象组成的集合：<code>KafkaTopicPartition(topic:A, partition:0)</code>和<code>KafkaTopicPartition(topic:A, partition:1)</code></p>
+</li>
+<li><p>Kafka数据消费<br>作为Flink Source，Flink Kafka Consumer最主要的职责就是能从Kafka中获取数据，交给下游处理。在Kafka Consumer中<code>AbstractFetcher</code>组件负责完成这部分功能。除此之外Fetcher还负责offset的提交、<code>KafkaTopicPartitionState</code>结构的数据维护。</p>
+</li>
+<li><p>KafkaTopicPartitionState<br><code>KafkaTopicPartitionState</code>是一个非常核心的数据结构，基于内部的4个基本属性，Flink Kafka Consumer维护了topic、partition、已消费offset、待提交offset的关联关系。Flink Kafka Consumer的容错机制依赖了这些数据。<br>除了这4个基本属性外<code>KafkaTopicPartitionState</code>还有两个子类，一个是支持<code>PunctuatedWatermark</code>的实现，另一个是支持<code>PeriodicWatermark</code>的实现，这两个子类在原有基础上扩展了对水印的支持，我们这里不做过多讨论。</p>
+</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">属性</th>
+<th style="text-align:left">类型</th>
+<th style="text-align:left">作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">partition</td>
+<td style="text-align:left">KafkaTopicPartition</td>
+<td style="text-align:left">用来描述topic与分区的关系</td>
+</tr>
+<tr>
+<td style="text-align:left">kafkaPartitionHandle</td>
+<td style="text-align:left">泛型</td>
+<td style="text-align:left">因为依赖Kafka版本，使用泛型定义。用来描述Kafka分区定义</td>
+</tr>
+<tr>
+<td style="text-align:left">offset</td>
+<td style="text-align:left">long</td>
+<td style="text-align:left">记录Consumer从Kafka已消费到，并发送到下游算子的的offset</td>
+</tr>
+<tr>
+<td style="text-align:left">committedOffset</td>
+<td style="text-align:left">long</td>
+<td style="text-align:left">记录Consumer从Kafka成功消费，待提交到Kafka brokers或Zookeeper的offset</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><p>状态持久化<br>Flink Kafka Consumer的容错性依靠的是状态持久化，也可以称为状态快照。对于Flink Kafka Consumer来说，这个状态持久化具体是对topic、partition、已消费offset的对应关系做持久化。<br>在实现中，使用<code>ListState&lt;Tuple2&lt;KafkaTopicPartition, Long&gt;&gt;</code>定义了状态存储结构，在这里Long表示的是offset类型，所以实际上就是使用<code>KafkaTopicPartition</code>和offset组成了一个对儿，再添加到状态后端集合。</p>
+</li>
+<li><p>状态恢复<br>当状态成功持久化后，一旦应用出现故障，就可以用最近持久化成功的快照恢复应用状态。在实现中，状态恢复时会将快照恢复到一个TreeMap结构中，其中key是<code>KafkaTopicPartition</code>，value是对应已消费的offset。恢复成功后，应用恢复到故障前Flink Kafka Consumer消费的offset，并继续执行任务，就好像什么都没发生一样。</p>
+</li>
+</ul>
+<h5 id="运行时"><a href="#运行时" class="headerlink" title="运行时"></a><strong><em>运行时</em></strong></h5><p>我们假设Flink应用正常运行，Flink Kafka Consumer消费topic为<code>Topic-A</code>，<code>Topic-A</code>只有一个partition。在运行期间，主要做了这么几件事</p>
+<ol>
+<li><p>Kafka数据消费<br>KafkaFetcher不断的从Kafka消费数据，消费的数据会发送到下游算子并在内部记录已消费过的offset。下图描述的是Flink Kafka Consumer从消费Kafka消息到将消息发送到下游算子的一个处理过程。<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaFetcher未消费阶段.jpg" alt="未消费"><br>接下来我们再结合消息真正开始处理后，KafkaTopicPartitionState结构中的数据变化。<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaFetcher开始消费阶段.jpg" alt="开始消费"><br>可以看到，随着应用的运行，<code>KafkaTopicPartitionState</code>中的offset属性值发生了变化，它记录了已经发送到下游算子消息在Kafka中的offset。在这里由于消息<code>P0-C</code>已经发送到下游算子，所以<code>KafkaTopicPartitionState.offset</code>变更为2。</p>
+</li>
+<li><p>状态快照处理<br>如果Flink应用开启了Checkpoint，JobManager会定期触发Checkpoint。<code>FlinkKafkaConsumer</code>实现了<code>CheckpointedFunction</code>，所以它具备快照状态(snapshotState)的能力。在实现中，snapshotState具体干了这么两件事</p>
+<ul>
+<li>将当前快照轮次(CheckpointId)与topic、partition、offset写入到一个<code>待提交offset</code>的Map集合，其中key是CheckpointId。</li>
+<li>将<code>FlinkKafkaConsumer</code>当前运行状态持久化，即将topic、partition、offset持久化。一旦出现故障，就可以根据最新持久化的快照进行恢复。</li>
+</ul>
+<p>下图描述当一轮Checkpoint开始时<code>FlinkKafkaConsumer</code>的处理过程。在例子中，FlinkKafkaConsumer已经将offset=3的<code>P0-D</code>消息发送到下游，当checkpoint触发时将topic=Topic-A；partition=0；offset=3作为最后的状态持久化到外部存储。<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer快照开始.jpg" alt="快照开始"></p>
+</li>
+<li><p>快照结束处理<br>当所有算子基于同一轮次快照处理结束后，会调用<code>CheckpointListener.notifyCheckpointComplete(checkpointId)</code>通知算子Checkpoint完成，参数checkpointId指明了本次通知是基于哪一轮Checkpoint。在<code>FlinkKafkaConsumer</code>的实现中，接到Checkpoint完成通知后会变更<code>KafkaTopicPartitionState.commitedOffset</code>属性值。最后再将变更后的commitedOffset提交到Kafka brokers或Zookeeper。<br>在这个例子中，commitedOffset变更为4，因为在快照阶段，将<code>topic=Topic-A;partition=0;offset=3</code>的状态做了快照，在真正提交offset时是将快照的<code>offset + 1</code>作为结果提交的。「源代码<code>KafkaFetcher.java 207行</code>doCommitInternalOffsetsToKafka方法」<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer快照结束.jpg" alt="快照结束"></p>
+</li>
+</ol>
+<h5 id="故障恢复"><a href="#故障恢复" class="headerlink" title="故障恢复"></a><strong><em>故障恢复</em></strong></h5><p>Flink应用崩溃后，开始进入恢复模式。假设Flink Kafka Consumer最后一次成功的快照状态是<code>topic=Topic-A；partition=0；offset=3</code>，在恢复期间按照下面的先后顺序执行处理。</p>
+<ol>
+<li><p>状态初始化<br>状态初始化阶段尝试从状态后端加载出可以用来恢复的状态。它由<code>CheckpointedFunction.initializeState</code>接口定义。在<code>FlinkKafkaConsumer</code>的实现中，从状态后端获得快照并写入到内部存储结构TreeMap，其中key是由<code>KafkaTopicPartition</code>表示的topic与partition，value为offset。下图描述的是故障恢复的第一个阶段，从状态后端获得快照，并恢复到内部存储。<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer恢复-step1.jpg" alt="第一阶段"></p>
+</li>
+<li><p>function初始化<br>function初始化阶段除了初始化OffsetCommitMode和partitionDiscoverer外，还会初始化一个Map结构，该结构用来存储应用<code>待消费信息</code>。如果应用需要从快照恢复状态，则从<code>待恢复状态</code>中初始化这个Map结构。下图是该阶段从快照恢复的处理过程。<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer恢复-step2.jpg" alt="第二阶段"></p>
+<p>function初始化阶段兼容了正常启动和状态恢复时offset的初始化。对于正常启动过程，<code>StartupMode</code>的设置决定<code>待消费信息</code>中的结果。该模式共有5种，默认为<code>StartupMode.GROUP_OFFSETS</code>。</p>
+</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">模式</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">设置方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">GROUP_OFFSETS</td>
+<td style="text-align:left">从指定consumer group提交到ZooKeeper或Kafka brokers的offset开始</td>
+<td style="text-align:left"><code>setStartFromGroupOffsets</code></td>
+</tr>
+<tr>
+<td style="text-align:left">EARLIEST</td>
+<td style="text-align:left">从Kafka最早的offset开始</td>
+<td style="text-align:left"><code>setStartFromEarliest</code></td>
+</tr>
+<tr>
+<td style="text-align:left">LATEST</td>
+<td style="text-align:left">从Kafka最新的offset开始</td>
+<td style="text-align:left"><code>setStartFromLatest</code></td>
+</tr>
+<tr>
+<td style="text-align:left">TIMESTAMP</td>
+<td style="text-align:left">从指定时间戳的offset开始</td>
+<td style="text-align:left"><code>setStartFromTimestamp</code></td>
+</tr>
+<tr>
+<td style="text-align:left">SPECIFIC_OFFSETS</td>
+<td style="text-align:left">从指定的topic、partition、offset开始</td>
+<td style="text-align:left"><code>setStartFromSpecificOffsets</code></td>
+</tr>
+</tbody>
+</table>
+<ol start="3">
+<li>开始执行<br>在该阶段中，将KafkaFetcher初始化、初始化内部消费状态、启动消费线程等等，其目的是为了将<code>FlinkKafkaConsumer</code>运行起来，下图描述了这个阶段的处理流程<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaConsumer恢复-step3.jpg" alt="第三阶段"><br>这里对图中两个步骤做个描述<ul>
+<li>步骤3，使用状态后端的快照结果<code>topic=Topic-A；partition=0；offset=3</code>初始化<code>Flink Kafka Consumer</code>内部维护的Kafka处理状态。因为是恢复流程，所以这个内部维护的处理状态也应该随着快照恢复。</li>
+<li>步骤4，在真正消费Kafka数据前(指调用KafkaConsumer.poll方法)，使用Kafka提供的seek方法将offset重置到指定位置，而这个offset具体算法就是<code>状态后端offset + 1</code>。在例子中，消费Kafka数据前将offset重置为4，所以状态恢复后KafkaConsumer是从offset=4位置开始消费。「源代码<code>KafkaConsumerThread.java 428行</code>」</li>
+</ul>
+</li>
+</ol>
+<h5 id="总结"><a href="#总结" class="headerlink" title="总结"></a><strong><em>总结</em></strong></h5><p>上述的3个步骤是恢复期间主要的处理流程，一旦恢复逻辑执行成功，后续处理流程与正常运行期间一致。最后对FlinkKafkaConsumer用一句话做个总结<br>「将offset提交权交给FlinkKafkaConsumer，其内部维护Kafka消费及提交的状态。基于Kafka可重复消费能力并配合Checkpoint机制和状态后端存储能力，就能实现FlinkKafkaConsumer容错性，即Source端的Exactly-once语义」</p>
+<h4 id="Flink-Kafka-Producer"><a href="#Flink-Kafka-Producer" class="headerlink" title="Flink Kafka Producer"></a>Flink Kafka Producer</h4><p>Flink Kafka Producer是Flink应用向Kafka写出数据的一个实现。在Kafka 0.11.0及以上版本中提供了事务支持，这让Flink搭载Kafka的事务特性可以轻松实现Sink端的Exactly-once语义。关于Kafka事务特性在<a href="http://" target="_blank" rel="noopener">《Kafka幂等与事务》</a>中做了详细讨论。</p>
+<p>在Flink Kafka Producer中，有一个非常重要的组件<code>FlinkKafkaInternalProducer</code>，这个组件代理了Kafka客户端<code>org.apache.kafka.clients.producer.KafkaProducer</code>，它为Flink Kafka Producer操作Kafka提供了强有力的支撑。在这个组件内部，除了代理方法外，还提供了一些关键操作。个人认为，Flink Kafka Sink能够实现Exactly-once语义除了需要Kafka支持事务特性外，同时也离不开<code>FlinkKafkaInternalProducer</code>组件提供的支持，尤其是下面这些关键操作：</p>
+<ul>
+<li>事务重置<br><code>FlinkKafkaInternalProducer</code>组件中最关键的处理当属事务重置，事务重置由resumeTransaction方法实现「源代码<code>FlinkKafkaInternalProducer.java</code> 144行」。由于Kafka客户端未暴露针对事务操作的API，所以在这个方法内部，大量的使用了反射。方法中使用反射获得KafkaProducer依赖的transactionManager对象，并将状态后端快照的属性值恢复到transactionManager对象中，这样以达到让Flink Kafka Producer应用恢复到重启前的状态。</li>
+</ul>
+<p>下面我们结合Flink <strong><em>运行时</em></strong> 和 <strong><em>故障恢复</em></strong> 两个不同的处理时机来了解Flink Kafka Producer内部如何工作。</p>
+<h5 id="运行时-1"><a href="#运行时-1" class="headerlink" title="运行时"></a><strong><em>运行时</em></strong></h5><p>我们假设Flink应用正常运行，Flink Kafka Producer正常接收上游数据并写到Topic-B的Topic中，Topic-B只有一个partition。在运行期间，主要做以下几件事：</p>
+<ol>
+<li><p>数据发送到Kafka<br>上游算子不断的将数据Sink到<code>FlinkKafkaProducer</code>，<code>FlinkKafkaProducer</code>接到数据后封装<code>ProducerRecord</code>对象并调用Kafka客户端<code>KafkaProducer.send</code>方法将<code>ProducerRecord</code>对象写入缓冲「源代码FlinkKafkaProducer.java 616行」。下图是该阶段的描述</p>
+<p><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer运行时第一步写入Kafka.jpg" alt="运行时第一步"></p>
+</li>
+<li><p>状态快照处理<br>Flink 1.7及以上版本使用<code>FlinkKafkaProducer</code>作为Kafka Sink，它继承抽象类<code>TwoPhaseCommitSinkFunction</code>，根据名字就能知道，这个抽象类主要实现<code>两阶段提交</code>。为了集成Flink Checkpoint机制，抽象类实现了<code>CheckpointedFunction</code>和<code>CheckpointListener</code>，因此它具备快照状态(snapshotState)能力。状态快照处理具体做了下面三件事：</p>
+<ul>
+<li><p>调用KafkaProducer客户端flush方法，将缓冲区内全部记录发送到Kafka，但不提交。这些记录写入到Topic-B，此时这些数据的事务隔离级别为UNCOMMITTED，也就是说如果有个服务消费Topic-B，并且设置的<code>isolation.level=read_committed</code>，那么此时这个消费端还无法poll到flush的数据，因为这些数据尚未commit。什么时候commit呢？在<code>快照结束处理</code>阶段进行commit，后面会提到。</p>
+</li>
+<li><p>将快照轮次与当前事务记录到一个Map表示的待提交事务集合中，key是当前快照轮次的CheckpointId，value是由<code>TransactionHolder</code>表示的事务对象。<code>TransactionHolder</code>对象内部记录了transactionalId、producerId、epoch以及Kafka客户端kafkaProducer的引用。</p>
+</li>
+<li><p>持久化当前事务处理状态，也就是将当前处理的事务详情存入状态后端，供应用恢复时使用。</p>
+</li>
+</ul>
+<p>下图是状态快照处理阶段处理过程<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer运行时第二步快照开始.jpg" alt="运行时第二步"></p>
+</li>
+<li><p>快照结束处理<br><code>TwoPhaseCommitSinkFunction</code>实现了<code>CheckpointListener</code>，应用中所有算子的快照处理成功后会收到基于某轮Checkpoint完成的通知。当<code>FlinkKafkaProducer</code>收到通知后，主要任务就是提交上一阶段产生的事务，而具体要提交哪些事务是从上一阶段生成的待提交事务集合中获取的。<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer运行时第三步快照提交.jpg" alt="运行时第三步">图中第4步执行成功后，flush到Kafka的数据从UNCOMMITTED变更为COMMITTED，这意味着此时消费端可以poll到这批数据了。</p>
+</li>
+</ol>
+<p>2PC(两阶段提交)理论的两个阶段分别对应了FlinkKafkaProducer的<code>状态快照处理</code>阶段和<code>快照结束处理</code>阶段，前者是通过Kafka的事务初始化、事务开启、flush等操作预提交事务，后者是通过Kafka的commit操作真正执行事务提交。</p>
+<h5 id="故障恢复-1"><a href="#故障恢复-1" class="headerlink" title="故障恢复"></a><strong><em>故障恢复</em></strong></h5><p>Flink应用崩溃后，<code>FlinkKafkaProducer</code>开始进入恢复模式。下图为应用崩溃前的状态描述<br><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer崩溃描述.jpg" alt="崩溃描述"></p>
+<p>在恢复期间主要的处理在状态初始化阶段。当Flink任务重启时会触发状态初始化，此时应用与Kafka已经断开了连接。但在运行期间可能存在数据flush尚未提交的情况。</p>
+<p>如果想重新提交这些数据需要从状态后端恢复当时KafkaProducer持有的事务对象，具体一点就是恢复当时事务的transactionalId、producerId、epoch。这个时候就用到了<code>FlinkKafkaInternalProducer</code>组件中的事务重置，在状态初始化时从状态后端获得这些事务信息，并重置到当前KafkaProducer中，再执行commit操作。这样就可以恢复任务重启前的状态，Topic-B的消费端依然可以poll到应用恢复后提交的数据。</p>
+<p>需要注意的是：<code>如果这个重置并提交的动作失败了，可能会造成数据丢失。</code>下图描述的是状态初始化阶段的处理流程</p>
+<p><img src="https://tianshushi.github.io/2019/04/24/Flink-Kafka-Connector/FlinkKafkaProducer恢复阶段状态初始化.jpg" alt="恢复阶段-状态初始化"></p>
+<h5 id="总结-1"><a href="#总结-1" class="headerlink" title="总结"></a><strong><em>总结</em></strong></h5><p><code>FlinkKafkaProducer</code>故障恢复期间，状态初始化是比较重要的处理阶段。这个阶段在Kafka事务特性的强有力支撑下，实现了事务状态的恢复，并且使得状态存储占用空间最小。依赖Flink提供的<code>TwoPhaseCommitSinkFunction</code>实现类，我们自己也可以对Sink做更多的扩展。</p>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+      
+    
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/Flink/" rel="tag"># Flink</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2019/03/02/ZooKeeper集群与Leader选举/" rel="next" title="ZooKeeper集群与Leader选举">
+                <i class="fa fa-chevron-left"></i> ZooKeeper集群与Leader选举
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2019/11/07/Amazon-DynamoDB在移动广告监测中的应用与实践/" rel="prev" title="Amazon DynamoDB在移动广告监测中的应用与实践">
+                Amazon DynamoDB在移动广告监测中的应用与实践 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+  </div>
+
+
+          </div>
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">说天书</p>
+              <div class="site-description motion-element" itemprop="description"></div>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/">
+                
+                    <span class="site-state-item-count">7</span>
+                    <span class="site-state-item-name">日志</span>
+                  </a>
+                </div>
+              
+
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">5</span>
+                    <span class="site-state-item-name">标签</span>
+                  
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+
+          
+
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </div>
+
+      
+      <!--noindex-->
+        <div class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+            
+            
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Flink-Kafka的使用"><span class="nav-number">1.</span> <span class="nav-text">Flink Kafka的使用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#版本依赖"><span class="nav-number">1.1.</span> <span class="nav-text">版本依赖</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#基本使用"><span class="nav-number">1.2.</span> <span class="nav-text">基本使用</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Flink-Kafka的容错"><span class="nav-number">2.</span> <span class="nav-text">Flink Kafka的容错</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Flink-Exactly-once"><span class="nav-number">2.1.</span> <span class="nav-text">Flink Exactly-once</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Flink-Checkpoint"><span class="nav-number">2.2.</span> <span class="nav-text">Flink Checkpoint</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Flink-Kafka端到端Exactly-once"><span class="nav-number">2.3.</span> <span class="nav-text">Flink Kafka端到端Exactly-once</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Flink-Kafka-Consumer"><span class="nav-number">2.3.1.</span> <span class="nav-text">Flink Kafka Consumer</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#运行时"><span class="nav-number">2.3.1.1.</span> <span class="nav-text">运行时</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#故障恢复"><span class="nav-number">2.3.1.2.</span> <span class="nav-text">故障恢复</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#总结"><span class="nav-number">2.3.1.3.</span> <span class="nav-text">总结</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Flink-Kafka-Producer"><span class="nav-number">2.3.2.</span> <span class="nav-text">Flink Kafka Producer</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#运行时-1"><span class="nav-number">2.3.2.1.</span> <span class="nav-text">运行时</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#故障恢复-1"><span class="nav-number">2.3.2.2.</span> <span class="nav-text">故障恢复</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#总结-1"><span class="nav-number">2.3.2.3.</span> <span class="nav-text">总结</span></a></li></ol></li></ol></li></ol></li></ol></div>
+            
+
+          </div>
+        </div>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+  
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love" id="animate">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">说天书</span>
+
+  
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a href="https://hexo.io" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v3.8.0</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 – <a href="https://theme-next.org" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.0.1</div>
+
+
+
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  
+    <span class="post-meta-item-icon">
+      <i class="fa fa-user"></i>
+    </span>
+    <span class="site-uv" title="总访客量">
+      <span class="busuanzi-value" id="busuanzi_value_site_uv"></span>
+    </span>
+  
+
+  
+    <span class="post-meta-divider">|</span>
+  
+
+  
+    <span class="post-meta-item-icon">
+      <i class="fa fa-eye"></i>
+    </span>
+    <span class="site-pv" title="总访问量">
+      <span class="busuanzi-value" id="busuanzi_value_site_pv"></span>
+    </span>
+  
+</div>
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+    
+
+    
+  </div>
+
+  
+
+<script>
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script src="/lib/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+
+  
+
+
+  <script src="/js/src/utils.js?v=7.0.1"></script>
+
+  <script src="/js/src/motion.js?v=7.0.1"></script>
+
+
+
+  
+  
+
+
+  <script src="/js/src/affix.js?v=7.0.1"></script>
+
+  <script src="/js/src/schemes/pisces.js?v=7.0.1"></script>
+
+
+
+
+  
+  <script src="/js/src/scrollspy.js?v=7.0.1"></script>
+<script src="/js/src/post-details.js?v=7.0.1"></script>
+
+
+
+  
+
+
+  <script src="/js/src/next-boot.js?v=7.0.1"></script>
+
+
+  
+
+  
+
+  
+
+  
+
+
+  
+
+
+  
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>
